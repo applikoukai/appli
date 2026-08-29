@@ -445,6 +445,8 @@ function App() {
   const [turnJumpOpenUpward, setTurnJumpOpenUpward] = useState(false);
   const turnJumpRef = useRef(null);
   const hasAutoFitZoom = useRef(false);
+  const boardContainerRef = useRef(null);
+  const mobileFooterRef = useRef(null);
 
   const state = appState.present;
 
@@ -523,14 +525,47 @@ function App() {
   // (rounded down to the slider's step of 10, clamped to its 50-200 range) that keeps
   // the board within the current viewport, so it doesn't require horizontal scrolling
   // on narrow phone screens.
+  //
+  // Measures the ACTUAL rendered board (and, on mobile, the fixed footer) instead of
+  // guessing at fixed padding constants, and checks both width AND height — a screen
+  // that's wide but short (landscape phones, a short browser window) needs the height
+  // check too, or "fit" can end up snapping zoom back up to 100% and pushing content
+  // (like the mobile inline end-turn button) below the visible viewport.
   const computeFitZoom = (boardSize) => {
     if (typeof window === 'undefined') return 100;
     const REM_PX = 16;
-    const CONTAINER_PADDING_PX = 56; // board card padding + page margins
-    const available = window.innerWidth - CONTAINER_PADDING_PX;
-    const naturalWidthPx = boardSize * 3.5 * REM_PX;
-    if (naturalWidthPx <= available) return 100;
-    const fit = Math.floor((available / naturalWidthPx) * 100 / 10) * 10;
+    const margin = 16;
+    const currentZoomFraction = state.zoomScale / 100;
+
+    const boardEl = boardContainerRef.current;
+    let widthScale;
+    let heightScale = 1;
+
+    if (boardEl) {
+      const rect = boardEl.getBoundingClientRect();
+      const naturalBoardWidth = rect.width / currentZoomFraction;
+      const naturalBoardHeight = rect.height / currentZoomFraction;
+
+      const availableWidth = window.innerWidth - margin * 2;
+      widthScale = availableWidth / naturalBoardWidth;
+
+      // Everything on the page besides the board (header, side panel, battle log,
+      // mobile inline end-turn button) doesn't scale with zoom — only the board does.
+      const pageHeight = document.documentElement.scrollHeight;
+      const footerEl = mobileFooterRef.current;
+      const footerHeight = (footerEl && state.mobileFooterEnabled) ? footerEl.getBoundingClientRect().height : 0;
+      const nonBoardHeight = (pageHeight - rect.height) + footerHeight;
+      const availableHeight = window.innerHeight - nonBoardHeight - margin;
+
+      heightScale = availableHeight / naturalBoardHeight;
+    } else {
+      const naturalWidthPx = boardSize * 3.5 * REM_PX;
+      const availableWidth = window.innerWidth - 56;
+      widthScale = availableWidth / naturalWidthPx;
+    }
+
+    const scale = Math.min(widthScale, heightScale, 1);
+    const fit = Math.floor(scale * 100 / 10) * 10;
     return Math.max(50, Math.min(100, fit));
   };
 
@@ -1976,7 +2011,7 @@ function App() {
     }`}>
       
       {/* --- Board Area --- */}
-      <div className="flex flex-col items-center select-none shadow-2xl rounded-2xl bg-slate-900 p-4 border border-slate-800">
+      <div ref={boardContainerRef} className="flex flex-col items-center select-none shadow-2xl rounded-2xl bg-slate-900 p-4 border border-slate-800">
         <div className="flex justify-between items-center w-full mb-4 px-1 gap-2">
           <div className="flex gap-2">
             <button onClick={undo} disabled={appState.past.length === 0 || state.pendingLightningStrike || state.pendingFireStrike} className="px-2.5 py-1 text-xs sm:text-sm bg-slate-800 border border-slate-700 disabled:opacity-30 rounded-lg hover:bg-slate-700 transition-colors shadow-sm">
@@ -2211,7 +2246,7 @@ function App() {
 
       {/* --- Mobile Fixed Footer --- */}
       {state.mobileFooterEnabled && (
-        <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 p-3 z-40 md:hidden shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)] rounded-t-2xl flex flex-col gap-3">
+        <div ref={mobileFooterRef} className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 p-3 z-40 md:hidden shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)] rounded-t-2xl flex flex-col gap-3">
           <div className="flex justify-between items-center px-1 relative">
             <div className="font-bold text-[11px] px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 w-24 text-center shrink-0">
               {state.phase.includes('king') ? <span className="text-red-400">King Phase{state.aiControl.king !== 'off' ? (state.aiPaused ? ' ⏸' : ' 🤖') : ''}</span> : <span className="text-purple-400">Wizard Phase{state.aiControl.wizard !== 'off' ? (state.aiPaused ? ' ⏸' : ' 🤖') : ''}</span>}
@@ -2299,7 +2334,7 @@ function App() {
             </div>
             <div className="space-y-4 text-xs sm:text-sm leading-relaxed text-slate-300">
               <section className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2 whitespace-pre-line">
-{`⚔️ 国王軍のルール
+{`⚔️ 国王軍の仕様と攻撃ルール
 配置：国王軍駒はボードの上端および左端のマスに配置されます。
 攻撃タイミング: 国王軍駒は「ターン開始時」「配置時」「移動後」に自動で攻撃します（魔法使いへは各駒1ターン1回のみ。複数ターゲットへの攻撃や複数ゴーレムの撃破は可能）。
 歩兵: 縦横1マス移動・攻撃。HP1の魔法使いの同一マスに移動して撃破できる。
@@ -2308,9 +2343,9 @@ function App() {
 
 ⚡ 魔法使いのルール
 魔法使いは1ターンに別種の魔法を合計2回まで実行できます。
-地震、雷、火炎は全て国王軍にだけ影響を与える。
-地震: 地震の魔法が使用されると指定されたマスが地震マスになる。地震マスにいる駒は移動と攻撃を行えない。地震マスには1マスだけ入ることが出来るが、その場合、そのターンの移動後攻撃は行われない。地震マス化は国王ターン終了時に解消される。魔法使いは地震マスにいる間、テレポート以外の魔法を使用できない。また、既に他の魔法を使用したターンに地震を使う場合、魔法使い自身のマスを含む範囲は選択できない。
+地震、雷、火炎は全て国王軍にだけ影響を与えます。
 雷: 指定した1マスの敵を撃破。
+地震マス: 地震の魔法が使用されると指定されたマスが地震マスになる。地震マスにいる駒は移動と攻撃を行えない。地震マスには1マスだけ入ることが出来るが、その場合、そのターンの移動後攻撃は行われない。地震マス化は国王ターン終了時に解消される。魔法使いは地震マスにいる間、テレポート以外の魔法を使用できない（別途「浮遊の魔法」が必要なため）。また、既に他の魔法を使用したターンに地震を使う場合、魔法使い自身のマスを含む範囲は選択できない。
 火炎: 縦横直線または斜め45度に5マス攻撃。
 ゴーレムの自動攻撃: 召喚時および魔法使いターン開始時に、上下左右に隣接する敵を自動的に撃破。
 ゴーレムの撃破: ゴーレムは歩兵、騎兵、盤面の端、他のゴーレムと隣接すると🎯が表示される。🎯が出ている状態で、歩兵や騎兵が隣接すると撃破される。騎兵は🎯サインが出ているゴーレムの隣接マスを通過する、または同一マスに移動する事でも撃破できる。`}
