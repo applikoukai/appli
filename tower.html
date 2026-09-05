@@ -1,0 +1,2561 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>カード周回ゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            touch-action: manipulation;
+            margin: 0;
+            /* スマホのブラウザUI対策でdvhを使用 */
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 盤面領域 */
+        .board-circular {
+            position: relative;
+            /* サイズを固定し、親のscaleで拡大縮小する */
+            width: 500px;
+            height: 500px;
+            margin: 0;
+        }
+        .cell {
+            background-color: #fff;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            font-size: 0.8rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            transition: all 0.2s;
+        }
+        .start-cell { background-color: #d1fae5; border-color: #10b981; }
+        
+        @keyframes bounce-token {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+
+        .player-token {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 20;
+            animation: bounce-token 1.5s infinite ease-in-out;
+        }
+        .player-0-token { background-color: #3b82f6; left: 4px; animation-delay: 0.0s; }
+        .player-1-token { background-color: #ef4444; left: 24px; animation-delay: 0.2s; }
+        .player-2-token { background-color: #10b981; right: 24px; animation-delay: 0.4s; }
+        .player-3-token { background-color: #8b5cf6; right: 4px; animation-delay: 0.6s; }
+        .player-4-token { background-color: #f97316; left: 4px; top: 4px; bottom: auto; animation-delay: 0.1s; }
+        .player-5-token { background-color: #14b8a6; left: 24px; top: 4px; bottom: auto; animation-delay: 0.3s; }
+        .player-6-token { background-color: #ec4899; right: 24px; top: 4px; bottom: auto; animation-delay: 0.5s; }
+        .player-7-token { background-color: #6b7280; right: 4px; top: 4px; bottom: auto; animation-delay: 0.7s; }
+        
+        /* 盤上のカード（2倍サイズ化） */
+        .card-placed {
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        
+        /* 手札のカード */
+        .playing-card {
+            width: 42px;
+            height: 60px;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            user-select: none;
+            position: relative;
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+        }
+        .playing-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .playing-card.selected {
+            border: 2px solid #3b82f6;
+            background-color: #eff6ff;
+            transform: translateY(-6px);
+            box-shadow: 0 4px 8px rgba(59,130,246,0.3);
+        }
+        
+        .card-back {
+            background: linear-gradient(135deg, #1e3a8a 25%, #3b82f6 25%, #3b82f6 50%, #1e3a8a 50%, #1e3a8a 75%, #3b82f6 75%);
+            background-size: 10px 10px;
+            border: 2px solid #ffffff;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        /* 自分が置いたカードのうち、まだ他プレイヤーには見えていない(非公開)ことを示す小さなバッジ */
+        .hidden-card-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 12px;
+            height: 12px;
+            background-size: 5px 5px;
+            border-width: 1px;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            z-index: 5;
+        }
+
+        .suit-hearts, .suit-diamonds { color: #ef4444; }
+        .suit-clubs, .suit-spades { color: #1f2937; }
+        
+        .log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column-reverse;
+            font-size: 0.75rem;
+        }
+        
+        /* モーダル関連 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(2px);
+        }
+        .modal.active { display: flex; }
+        
+        /* アニメーション関連 */
+        .flying-card {
+            position: fixed;
+            width: 30px;
+            height: 42px;
+            background: linear-gradient(135deg, #1e3a8a 25%, #3b82f6 25%, #3b82f6 50%, #1e3a8a 50%, #1e3a8a 75%, #3b82f6 75%);
+            background-size: 10px 10px;
+            border: 2px solid #ffffff;
+            border-radius: 4px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 200;
+            pointer-events: none;
+            transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+            opacity: 0;
+            transform: scale(0.5);
+            margin-top: -21px;
+            margin-left: -15px;
+        }
+        
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        .pop-anim {
+            animation: pop 0.3s ease-out;
+        }
+
+        /* ダイスの表示（盤面中央） */
+        @keyframes dice-pop-in {
+            0% { transform: scale(0.4) rotate(-15deg); opacity: 0; }
+            60% { transform: scale(1.15) rotate(5deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .dice-pop-anim { animation: dice-pop-in 0.35s ease-out; }
+        .die-face {
+            width: 48px;
+            height: 48px;
+            background: white;
+            border: 2px solid #1f2937;
+            border-radius: 10px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            padding: 6px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+        }
+        .dice-dot-cell { display: flex; align-items: center; justify-content: center; }
+        .dice-dot { width: 8px; height: 8px; border-radius: 50%; background: #1f2937; }
+        @media (min-width: 640px) {
+            .die-face { width: 60px; height: 60px; }
+            .dice-dot { width: 10px; height: 10px; }
+        }
+
+        /* スクロールバー装飾 */
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        
+        /* 手番パネルのハイライト */
+        .active-turn-cpu {
+            background-color: #fef3c7 !important;
+            border-color: #f59e0b !important;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+        }
+        .active-turn-player {
+            background-color: #eff6ff !important;
+            border-color: #3b82f6 !important;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 固定ヘッダー -->
+<header class="bg-white shadow-sm z-20 flex-shrink-0 p-2 sm:p-3 flex justify-between items-center border-b-4 border-blue-600">
+    <div>
+        <h1 class="text-sm sm:text-lg font-black text-gray-800 flex items-center gap-1">
+            🎲 カード周回ゲーム
+        </h1>
+    </div>
+    <div class="flex items-center gap-2">
+        <button onclick="openDiscardModal()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold px-2 py-1 sm:px-3 sm:py-1.5 rounded text-xs sm:text-sm shadow flex items-center gap-1 transition">
+            🗑️ 捨て札 (<span id="discard-count-btn">0</span>)
+        </button>
+        <label class="flex items-center gap-1 text-xs sm:text-sm font-bold text-gray-600 cursor-pointer bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 transition">
+            <input type="checkbox" id="footer-toggle" checked onchange="toggleFooterMode()" class="accent-blue-600"> 
+            フッターUI
+        </label>
+        <button onclick="openRulesModal()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-2 py-1 sm:px-3 sm:py-1.5 rounded text-xs sm:text-sm shadow flex items-center gap-1">
+            📖 ルール
+        </button>
+        <button onclick="openSettingsModal()" class="bg-gray-600 hover:bg-gray-700 text-white font-bold px-2 py-1 sm:px-3 sm:py-1.5 rounded text-xs sm:text-sm shadow flex items-center gap-1">
+            ⚙️ 設定
+        </button>
+    </div>
+</header>
+
+<!-- CPUステータスバー (上部に横スクロールでコンパクト配置) -->
+<div id="cpu-status-bar" class="flex gap-2 p-2 bg-gray-200 overflow-x-auto flex-shrink-0 custom-scrollbar border-b border-gray-300">
+    <!-- あなた (Blue) -->
+    <div id="p0-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-blue-500 flex flex-col justify-between transition-colors">
+        <div class="text-xs font-bold text-gray-800">あなた (青)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p0-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p0-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-blue-50 rounded px-1.5 py-0.5 border border-blue-100">
+            <span class="text-[10px] font-bold text-blue-800">手札</span>
+            <div id="p0-hand-count-container" class="bg-blue-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p0-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 1 (Red) -->
+    <div id="cpu1-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-red-500 flex flex-col justify-between transition-colors">
+        <div class="text-xs font-bold text-gray-800">CPU 1 (赤)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p1-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p1-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-red-50 rounded px-1.5 py-0.5 border border-red-100">
+            <span class="text-[10px] font-bold text-red-800">手札</span>
+            <div id="p1-hand-count-container" class="bg-red-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p1-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 2 (Green) -->
+    <div id="cpu2-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-green-500 flex flex-col justify-between transition-colors">
+        <div class="text-xs font-bold text-gray-800">CPU 2 (緑)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p2-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p2-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-green-50 rounded px-1.5 py-0.5 border border-green-100">
+            <span class="text-[10px] font-bold text-green-800">手札</span>
+            <div id="p2-hand-count-container" class="bg-green-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p2-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 3 (Purple) -->
+    <div id="cpu3-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-purple-500 flex flex-col justify-between transition-colors">
+        <div class="text-xs font-bold text-gray-800">CPU 3 (紫)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p3-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p3-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-purple-50 rounded px-1.5 py-0.5 border border-purple-100">
+            <span class="text-[10px] font-bold text-purple-800">手札</span>
+            <div id="p3-hand-count-container" class="bg-purple-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p3-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 4 (Orange) -->
+    <div id="cpu4-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-orange-500 flex flex-col justify-between transition-colors hidden">
+        <div class="text-xs font-bold text-gray-800">CPU 4 (橙)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p4-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p4-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-orange-50 rounded px-1.5 py-0.5 border border-orange-100">
+            <span class="text-[10px] font-bold text-orange-800">手札</span>
+            <div id="p4-hand-count-container" class="bg-orange-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p4-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 5 (Teal) -->
+    <div id="cpu5-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-teal-500 flex flex-col justify-between transition-colors hidden">
+        <div class="text-xs font-bold text-gray-800">CPU 5 (青緑)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p5-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p5-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-teal-50 rounded px-1.5 py-0.5 border border-teal-100">
+            <span class="text-[10px] font-bold text-teal-800">手札</span>
+            <div id="p5-hand-count-container" class="bg-teal-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p5-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 6 (Pink) -->
+    <div id="cpu6-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-pink-500 flex flex-col justify-between transition-colors hidden">
+        <div class="text-xs font-bold text-gray-800">CPU 6 (桃)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p6-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p6-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-pink-50 rounded px-1.5 py-0.5 border border-pink-100">
+            <span class="text-[10px] font-bold text-pink-800">手札</span>
+            <div id="p6-hand-count-container" class="bg-pink-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p6-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+    <!-- CPU 7 (Gray) -->
+    <div id="cpu7-panel" class="min-w-[130px] bg-white p-2 rounded shadow border-l-4 border-gray-500 flex flex-col justify-between transition-colors hidden">
+        <div class="text-xs font-bold text-gray-800">CPU 7 (灰)</div>
+        <div class="text-[10px] text-gray-500 mb-1">周回: <span id="p7-laps" class="font-bold text-black">0</span>/<span class="target-laps-display">7</span> | 位置: <span id="p7-pos" class="font-bold text-black">0</span></div>
+        <div class="flex items-center gap-1 justify-between bg-gray-50 rounded px-1.5 py-0.5 border border-gray-100">
+            <span class="text-[10px] font-bold text-gray-800">手札</span>
+            <div id="p7-hand-count-container" class="bg-gray-600 text-white font-bold text-xs px-2 py-0.5 rounded-full min-w-[1.5rem] text-center transition-transform">
+                <span id="p7-hand-count">5</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- メインエリア（盤面とログ、サイドバーUI） -->
+<div class="flex-1 flex flex-col md:flex-row overflow-hidden relative bg-gray-50">
+    
+    <!-- サイドバー領域 (フッターOFF時にプレイヤーUIがここに入る。スマホなど狭い画面では非表示) -->
+    <div id="sidebar-container" class="hidden md:flex flex-col md:w-72 lg:w-80 flex-shrink-0 bg-white border-r shadow-inner z-10 overflow-y-auto custom-scrollbar">
+        <!-- 初期状態は空。JavaScriptで #player-ui-panel が移動してくる -->
+    </div>
+
+    <!-- 盤面とログのコンテナ -->
+    <div class="flex-1 relative overflow-hidden">
+        <!-- スクロール用コンテナ -->
+        <div class="absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col">
+            <!-- 盤面エリア (画面の表示領域を100%占有し、ログをスクロール外へ押し出す) -->
+            <div id="board-wrapper" class="w-full h-full flex-shrink-0 relative overflow-hidden flex justify-center items-center">
+                <!-- ズームコントロール -->
+                <div class="absolute top-2 right-2 bg-white/80 backdrop-blur p-1.5 rounded-lg shadow z-10 flex flex-col items-end gap-1 border">
+                    <label class="text-xs font-bold text-gray-700 flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" id="zoom-auto" checked onchange="handleZoomChange()" class="accent-blue-600"> Auto Fit
+                    </label>
+                    <input type="range" id="zoom-slider" min="0.3" max="2" step="0.05" value="1" disabled oninput="handleZoomChange()" class="w-24 sm:w-32 cursor-pointer">
+                </div>
+                
+                <!-- スケール適用コンテナ -->
+                <div id="board-scale-container" class="transition-transform duration-200 origin-center">
+                    <div id="board" class="board-circular"></div>
+                </div>
+
+                <!-- 振られたダイスの表示（盤面の中央、拡縮の影響を受けない固定サイズ） -->
+                <div id="dice-overlay" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-2 z-20 pointer-events-none">
+                    <div class="flex items-center gap-3">
+                        <div id="die-1"></div>
+                        <div id="die-2"></div>
+                    </div>
+                    <div id="dice-total-badge" class="bg-gray-900/85 text-white font-black text-sm sm:text-base px-3 py-1 rounded-full shadow-lg"></div>
+                </div>
+
+                <!-- バトル/直接攻撃 復帰用オーバーレイ（盤面中央＝ダイス表示と同じ位置） -->
+                <div id="battle-return-overlay" class="hidden absolute inset-0 z-30 flex items-center justify-center cursor-pointer pointer-events-auto" onclick="showBattleModalFromBoard()">
+                    <div class="bg-red-600/90 text-white font-black py-3 px-6 rounded-full shadow-[0_0_20px_rgba(220,38,38,0.8)] border-2 border-white text-sm sm:text-base flex items-center gap-2 animate-pulse hover:bg-red-500 transition text-center scale-[0.7]">
+                        ⚔️ タップしてバトルに戻る
+                    </div>
+                </div>
+                <div id="lap-challenge-return-overlay" class="hidden absolute inset-0 z-30 flex items-center justify-center cursor-pointer pointer-events-auto" onclick="showLapChallengeModalFromBoard()">
+                    <div class="bg-amber-500/90 text-white font-black py-3 px-6 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.8)] border-2 border-white text-sm sm:text-base flex items-center gap-2 animate-pulse hover:bg-amber-400 transition text-center scale-[0.7]">
+                        🔄 タップして選択画面に戻る
+                    </div>
+                </div>
+            </div>
+
+            <!-- ログエリア (下に隠れるように高さを調整) -->
+            <div class="h-48 sm:h-64 bg-gray-900 text-gray-200 flex-shrink-0 p-2 overflow-hidden flex flex-col z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
+                <div class="text-[10px] sm:text-xs font-bold text-gray-400 border-b border-gray-700 mb-1 pb-0.5 flex justify-between">
+                    <span>📝 ゲームログ (下にスクロールで確認)</span>
+                    <span class="text-gray-500">最新の出来事</span>
+                </div>
+                <div id="log" class="log-container custom-scrollbar pr-1"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- フッターコンテナ (デフォルトON) -->
+<div id="footer-container" class="flex-shrink-0 bg-white border-t-4 border-blue-500 shadow-[0_-5px_15px_rgba(0,0,0,0.15)] z-30 transition-all">
+    <!-- 実体のプレイヤーUI（サイドバーモード時は上の #sidebar-container へ移動する） -->
+    <div id="player-ui-panel" class="w-full max-w-5xl mx-auto pt-0.5 pb-2 px-2 sm:pt-1 sm:pb-3 sm:px-3 flex flex-col gap-1.5 transition-colors">
+        
+        <!-- フッター1列目: 手札エリア -->
+        <div class="bg-blue-50/50 rounded pt-0.5 pb-1 px-1.5 border border-blue-100">
+            <div id="p0-hand" class="flex flex-nowrap overflow-x-auto gap-1.5 pb-1 pt-0 px-1 min-h-[66px] items-center custom-scrollbar"></div>
+        </div>
+        
+        <!-- フッター2列目: アクションボタンエリア -->
+        <div id="action-buttons-area" class="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-2">
+            <button id="btn-dice" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-1 rounded font-bold shadow text-[10px] sm:text-xs transition flex items-center justify-center gap-1 cursor-pointer" onclick="rollDiceAction()">🎲 ダイス振る</button>
+            <button id="btn-card-move" class="bg-green-600 hover:bg-green-700 text-white py-2 px-1 rounded font-bold shadow text-[10px] sm:text-xs transition flex items-center justify-center gap-1 cursor-pointer opacity-50 cursor-not-allowed" disabled onclick="useCardMoveAction()">🏃 カード移動</button>
+            <button id="btn-place-card" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-1 rounded font-bold shadow text-[10px] sm:text-xs transition flex items-center justify-center gap-1 cursor-pointer opacity-50 cursor-not-allowed" disabled onclick="placeCardAction()">📌 カード設置</button>
+            <button id="btn-swap-card" class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-1 rounded font-bold shadow text-[10px] sm:text-xs transition flex items-center justify-center gap-1 cursor-pointer opacity-50 cursor-not-allowed" disabled onclick="swapCardAction()">🔄 交換(1ドロー)</button>
+            <button id="btn-skip-swap" class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-1 rounded font-bold shadow text-[10px] sm:text-xs transition flex items-center justify-center gap-1 cursor-pointer opacity-50 cursor-not-allowed col-span-2 sm:col-span-1" disabled onclick="skipSwapAction()">🛑 何もしない</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================== モーダル群 ================== -->
+<!-- 設定モーダル -->
+<div id="settings-modal" class="modal">
+    <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 flex flex-col border-t-4 border-gray-600 max-h-[85vh]">
+        <h3 class="font-bold text-xl text-gray-800 border-b pb-2 flex-shrink-0">⚙️ ゲーム設定</h3>
+        <div class="space-y-3 overflow-y-auto custom-scrollbar flex-1 py-3 pr-1 -mr-1">
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>盤面の広さ:</span>
+                <select id="setting-board-size" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="9">9マス</option>
+                    <option value="12">12マス</option>
+                    <option value="13" selected>13マス (標準)</option>
+                    <option value="14">14マス</option>
+                    <option value="16">16マス</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>プレイヤー人数:</span>
+                <select id="setting-players" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="2">2人</option>
+                    <option value="3" selected>3人</option>
+                    <option value="4">4人</option>
+                    <option value="5">5人</option>
+                    <option value="6">6人</option>
+                    <option value="7">7人</option>
+                    <option value="8">8人</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>目標周回数:</span>
+                <select id="setting-laps" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="2">2周</option>
+                    <option value="3">3周</option>
+                    <option value="4">4周</option>
+                    <option value="5">5周</option>
+                    <option value="6">6周</option>
+                    <option value="7" selected>7周</option>
+                    <option value="8">8周</option>
+                    <option value="9">9周</option>
+                    <option value="10">10周</option>
+                    <option value="11">11周</option>
+                    <option value="12">12周</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>初期手札枚数:</span>
+                <select id="setting-initial-hand" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="3">3枚</option>
+                    <option value="4">4枚</option>
+                    <option value="5" selected>5枚 (標準)</option>
+                    <option value="6">6枚</option>
+                    <option value="7">7枚</option>
+                    <option value="8">8枚</option>
+                    <option value="9">9枚</option>
+                    <option value="10">10枚</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>最大手札枚数:</span>
+                <select id="setting-max-hand" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="5">5枚</option>
+                    <option value="6">6枚</option>
+                    <option value="7">7枚</option>
+                    <option value="8" selected>8枚 (標準)</option>
+                    <option value="9">9枚</option>
+                    <option value="10">10枚</option>
+                    <option value="11">11枚</option>
+                    <option value="12">12枚</option>
+                    <option value="13">13枚</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>山札の仕様:</span>
+                <select id="setting-individual-decks" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="true" selected>ON (プレイヤー別)</option>
+                    <option value="false">OFF (共通山札)</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>周回ごとの引き枚数:</span>
+                <select id="setting-lap-draw" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="0">0枚</option>
+                    <option value="1" selected>1枚 (標準)</option>
+                    <option value="2">2枚</option>
+                    <option value="3">3枚</option>
+                    <option value="4">4枚</option>
+                    <option value="5">5枚</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>手ぶらボーナス:</span>
+                <select id="setting-empty-hand-bonus" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="0">0枚</option>
+                    <option value="1">1枚</option>
+                    <option value="2" selected>2枚 (標準)</option>
+                    <option value="3">3枚</option>
+                    <option value="4">4枚</option>
+                    <option value="5">5枚</option>
+                </select>
+            </div>
+            <p class="text-[10px] text-gray-500 -mt-2 leading-snug">※ 手ぶらボーナスは、GOマス到達の瞬間に手札が0枚だった場合のみ、周回ごとの引き枚数に加えて追加でドローできる枚数です。結果的に「手ぶらボーナス＋周回ごとの引き枚数」の手札になります（標準設定では 2+1=3枚）。</p>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>無条件のターン定期ドロー:</span>
+                <div class="flex items-center gap-1">
+                    <select id="setting-turn-draw-n" class="border-2 rounded px-1.5 py-1.5 bg-gray-50 outline-none focus:border-blue-500 text-xs">
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                    </select>
+                    <span class="text-xs">の倍数ターンに</span>
+                    <select id="setting-turn-draw-count" class="border-2 rounded px-1.5 py-1.5 bg-gray-50 outline-none focus:border-blue-500 text-xs">
+                        <option value="0" selected>0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+                    <span class="text-xs">枚</span>
+                </div>
+            </div>
+        </div>
+        <div class="pt-2 flex-shrink-0">
+            <button onclick="applySettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-bold shadow transition cursor-pointer mb-2">設定を適用してリセット</button>
+            <button onclick="closeSettingsModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold transition cursor-pointer">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<!-- バトルモーダル -->
+<div id="battle-modal" class="modal" onclick="if(event.target === this) hideBattleModalForBoard()">
+    <div class="bg-white p-3 sm:p-4 rounded-xl shadow-2xl max-w-lg w-full mx-2 sm:mx-4 flex flex-col border-4 border-red-500 max-h-[95vh] overflow-y-auto custom-scrollbar">
+        <div class="flex justify-between items-center border-b-2 border-red-200 mb-2 pb-1">
+            <h3 id="battle-title" class="text-base sm:text-lg font-black text-red-700 flex items-center gap-1.5 m-0">
+                ⚔️ バトル
+            </h3>
+            <button onclick="hideBattleModalForBoard()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-1 px-2.5 rounded shadow transition cursor-pointer flex items-center gap-1 border border-gray-300">
+                👀 盤面を見る
+            </button>
+        </div>
+        <div id="battle-context-banner" class="hidden text-center text-xs sm:text-sm font-black text-white rounded-lg py-1.5 px-2 mb-2"></div>
+        
+        <div class="flex flex-col sm:flex-row justify-between gap-2 mb-2">
+            <!-- 攻撃側 -->
+            <div class="flex-1 bg-red-50 p-2 rounded-lg border-2 border-red-200 shadow-inner">
+                <div class="font-bold text-red-800 border-b border-red-200 pb-0.5 mb-1 flex justify-between items-end text-xs">
+                    <span>🗡️ 攻撃: <span id="battle-atk-name" class="font-bold"></span></span>
+                    <span class="text-[10px] font-normal">手札: <span id="battle-atk-hand-count" class="font-bold"></span>枚</span>
+                </div>
+                <div id="battle-atk-card-area" class="h-20 sm:h-24 flex items-center justify-center bg-white rounded border border-red-100 shadow-sm scale-90 origin-center">
+                    <!-- カード表示 -->
+                </div>
+                <div class="text-center font-bold text-sm sm:text-base text-red-600 mt-1 bg-red-100 rounded py-0.5">
+                    攻撃力: <span id="battle-atk-power">?</span>
+                </div>
+            </div>
+            
+            <div class="flex items-center justify-center font-black text-lg text-gray-300 italic py-0.5">VS</div>
+            
+            <!-- 防御側 -->
+            <div class="flex-1 bg-blue-50 p-2 rounded-lg border-2 border-blue-200 shadow-inner">
+                <div class="font-bold text-blue-800 border-b border-blue-200 pb-0.5 mb-1 flex justify-between items-end text-xs">
+                    <span>🛡️ 防御: <span id="battle-def-name" class="font-bold"></span></span>
+                    <span class="text-[10px] font-normal">手札: <span id="battle-def-hand-count" class="font-bold"></span>枚</span>
+                </div>
+                <div id="battle-def-card-area" class="h-20 sm:h-24 flex items-center justify-start gap-1 bg-white rounded border border-blue-100 shadow-sm scale-90 origin-center overflow-x-auto custom-scrollbar px-1">
+                    <!-- カード表示 -->
+                </div>
+                <div class="text-center font-bold text-sm sm:text-base text-blue-600 mt-1 bg-blue-100 rounded py-0.5">
+                    防御力: <span id="battle-def-power">?</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 状態メッセージ -->
+        <div class="bg-gray-800 text-white p-2 rounded-lg text-center font-bold mb-2 min-h-[2.2rem] flex items-center justify-center shadow-md text-xs sm:text-sm">
+            <span id="battle-message"></span>
+        </div>
+
+        <!-- プレイヤー用のアクション領域 -->
+        <div id="battle-player-area" class="hidden flex-col gap-1.5 border-t border-gray-200 pt-2">
+            <p class="text-xs font-bold text-gray-700 text-center">あなたの手札:</p>
+            <div id="battle-player-hand" class="flex flex-wrap gap-1.5 justify-center min-h-[50px]"></div>
+            
+            <!-- 攻撃用のアクションボタン -->
+            <div id="battle-btn-atk" class="flex gap-2 hidden max-w-xs mx-auto w-full mt-1">
+                <button class="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded shadow font-bold text-xs sm:text-sm transition opacity-50 cursor-not-allowed" id="battle-submit-atk" disabled onclick="handleBattleInput('atk_set', true)">このカードで攻撃</button>
+                <button id="battle-atk-pass-btn" class="hidden flex-1 bg-gray-500 hover:bg-gray-600 text-white py-1.5 rounded shadow font-bold text-xs sm:text-sm transition cursor-pointer" onclick="handleBattleInput('atk_set', false)">パス</button>
+            </div>
+
+            <div id="battle-btn-def" class="flex gap-2 hidden max-w-xs mx-auto w-full mt-1">
+                <button class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded shadow font-bold text-xs sm:text-sm transition opacity-50 cursor-not-allowed" id="battle-submit-def" disabled onclick="handleBattleInput('def_set', true)">防御カード追加</button>
+                <button class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-1.5 rounded shadow font-bold text-xs sm:text-sm transition cursor-pointer" onclick="handleBattleInput('def_set', false)">パス</button>
+            </div>
+            <div id="battle-btn-boost" class="flex flex-col gap-1.5 hidden max-w-xs mx-auto w-full mt-1">
+                <div class="flex gap-1.5 w-full">
+                    <button class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded shadow font-bold text-[11px] transition opacity-50 cursor-not-allowed" id="battle-submit-boost" disabled onclick="handleBattleInput('boost', true)">選択カードを捨ててブースト</button>
+                    <button class="bg-gray-500 hover:bg-gray-600 text-white py-1.5 px-3 rounded shadow font-bold text-[11px] transition cursor-pointer whitespace-nowrap" onclick="handleBattleInput('boost', false)">パス</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 進行用の次へボタン -->
+        <div id="battle-next-area" class="mt-1 flex justify-center hidden">
+            <button class="bg-gray-800 hover:bg-gray-900 text-white py-1.5 px-8 rounded-full shadow font-bold text-xs sm:text-sm transition transform hover:scale-105 active:scale-95 cursor-pointer" onclick="nextBattleStep()">次へ ▶</button>
+        </div>
+    </div>
+</div>
+
+<!-- 周回逆転バトル/蹴落としバトル 対象選択モーダル -->
+<div id="lap-challenge-modal" class="modal" onclick="if(event.target === this) hideLapChallengeModalForBoard()">
+    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 flex flex-col border-4 border-amber-500">
+        <div class="flex justify-between items-center border-b pb-2 mb-2">
+            <h3 class="text-lg sm:text-xl font-black text-amber-700 flex items-center gap-1.5 m-0">
+                🔄 直接攻撃の機会
+            </h3>
+            <button onclick="hideLapChallengeModalForBoard()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-1 px-2.5 rounded shadow transition cursor-pointer flex items-center gap-1 border border-gray-300 whitespace-nowrap">
+                👀 盤面を見る
+            </button>
+        </div>
+        <p class="text-sm text-gray-700 mb-3">同じマスのプレイヤーに直接攻撃を仕掛けられます。</p>
+        <div id="lap-challenge-targets" class="flex flex-col gap-2 mb-3"></div>
+        <button onclick="skipLapChallenge()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold transition cursor-pointer">見送る</button>
+    </div>
+</div>
+
+<!-- ゲームオーバーモーダル -->
+<div id="game-over-modal" class="modal">
+    <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm w-full mx-4 text-center">
+        <h2 id="game-over-title" class="text-3xl font-bold mb-2"></h2>
+        <p id="game-over-desc" class="mb-6 text-gray-600 font-bold"></p>
+        <button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-lg cursor-pointer" onclick="initGame()">もう一度プレイ</button>
+    </div>
+</div>
+
+<!-- 捨て札モーダル -->
+<div id="discard-modal" class="modal">
+    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col">
+        <div class="flex justify-between items-center mb-2 sm:mb-3 border-b pb-2">
+            <div class="flex items-center gap-2">
+                <h3 class="text-lg sm:text-xl font-bold text-gray-800">🗑️ 捨て札 (<span id="discard-total-count">0</span>枚)</h3>
+                <select id="discard-player-select" class="ml-2 border rounded p-1 text-xs sm:text-sm bg-gray-50 outline-none hidden" onchange="renderDiscardList()">
+                </select>
+            </div>
+            <button onclick="closeDiscardModal()" class="text-gray-400 font-bold text-xl px-2 cursor-pointer">&times;</button>
+        </div>
+        <div id="discard-list-container" class="overflow-y-auto flex-1 custom-scrollbar"></div>
+        <div class="mt-3 sm:mt-4 pt-3 border-t text-right">
+            <button onclick="closeDiscardModal()" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-6 rounded-lg font-bold text-sm cursor-pointer">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<!-- ルールモーダル -->
+<div id="rules-modal" class="modal">
+    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col">
+        <h3 class="text-lg sm:text-xl font-bold text-gray-800 mb-2 sm:mb-3 border-b pb-2">📖 ゲームルール</h3>
+        <div class="overflow-y-auto flex-1 space-y-4 text-xs sm:text-sm leading-relaxed text-gray-700 custom-scrollbar pr-2">
+            <div>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-blue-500 pl-2">🏃‍♂️ 移動について</h4>
+                <p>・<strong>ダイス移動:</strong> 🎲ダイスを2個振り、出目の和だけ進みます。</p>
+                <p>・<strong>カード移動:</strong> 手札のカードを選んで使用すると、記載されている数（A=1 〜 K=13）の分だけ正確に進むことができます。</p>
+            </div>
+            <div>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-green-500 pl-2">🃏 カードを引く</h4>
+                <p>・<strong>自分のマス:</strong> 自分の所有するマスを通過、または丁度止まった時にカードを1枚引きます。</p>
+                <p>・<strong>GOマス (スタート):</strong> 周回してGOマスに到達または通過した際、設定した枚数（標準1枚）を引きます。到達の瞬間に手札が0枚(手ぶら)だった場合は、手ぶらボーナス（標準2枚）を追加で引き、結果的に「手ぶらボーナス＋周回ごとの引き枚数」枚になります。</p>
+                <p>・<strong>ターン定期ドロー:</strong> 設定で「〇の倍数ターンに〇枚引く」を有効にすると、そのプレイヤーの該当ターン開始時に無条件でカードを引きます（標準ではOFF）。</p>
+                <p>・<strong>カード交換:</strong> 自分のマスに丁度止まると手札からカード交換が行えます。カード交換を行うと、元々置かれていたカードは捨て札になり、追加で1枚引くことができます。</p>
+            </div>
+            <div>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-red-500 pl-2">🏠 マスの所有とバトル</h4>
+                <p>・移動後、空きマスであれば手札のカードを裏向きで置いて自分のマスにできます。</p>
+                <p>・他人のマスに止まるとバトルを仕掛けることができます。<br>
+                   【バトルの流れ】<br>
+                   ① 攻撃側: 手札からカードを1枚裏向きで出す。<br>
+                   ② 防御側: 手札から任意でカードを1枚出す。<br>
+                   ③ 判定: 防御側は「マスに元々あるカード」と「追加したカード」の合計値。攻撃側は出したカードの数値。<br>
+                   ④ ブースト: バトルで負けている側（同数の場合は攻撃側）が、手札を捨てることで1枚につき数値を+1できます。逆転すると相手に選択権が移ります。これを繰り返して劣勢側がパスをするとそこで決着し、勝者がマスの持ち主になります。<br>
+                   攻撃側が勝った場合、最初に出したカードがそのマスに置かれます。
+                </p>
+            </div>
+            <div>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-amber-500 pl-2">🔄 周回逆転バトル</h4>
+                <p>・他のプレイヤーと同じマスに止まると、マスへの通常対応（設置・交換・マス争奪バトル）を終えた後に、自分より周回数の多いプレイヤーへ攻撃を仕掛けられます（複数いれば相手を選べます）。</p>
+                <p>・同じマスに複数プレイヤーがいる場合、止まったプレイヤーがまず判断し、その後は手番順に他の該当プレイヤーにも判断の機会が回ります（実際の手番は消費されません）。</p>
+                <p>・攻撃側は伏せカードを1枚、防御側は手札から好きな枚数のカードを出して合計値を比較し、通常のバトルと同様のブースト戦を行います。攻撃側が勝つと両者の周回数が入れ替わります。</p>
+            </div>
+            <div>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-orange-600 pl-2">⚡ 蹴落としバトル</h4>
+                <p>・移動して同じマスに止まったプレイヤーは、周回逆転バトルと同じタイミングで自分と周回数が同じ相手にも攻撃を仕掛けられます（同じマスに元からいた他のプレイヤーには、この権利はありません）。</p>
+                <p>・バトルの流れは周回逆転バトルと同じですが、攻撃側が勝利した場合は周回数の入れ替えではなく、相手の周回数が1つ減ります。攻撃側が負けてもペナルティはありません。</p>
+            </div>
+            <div>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-yellow-500 pl-2">🏆 勝利条件</h4>
+                <p>・盤面を周回して最初に目標周回数に達したプレイヤーが勝利です。</p>
+            </div>
+        </div>
+        <div class="mt-3 sm:mt-4 pt-3 border-t text-right">
+            <button onclick="closeRulesModal()" class="bg-blue-600 text-white py-2 px-6 rounded-lg font-bold text-sm cursor-pointer hover:bg-blue-700 transition">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSE(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'dice') {
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        } else if (type === 'card') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, now);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+            osc.start(now); osc.stop(now + 0.08);
+        } else if (type === 'battle') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(80, now + 0.2);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+        } else if (type === 'win') {
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.1);
+            osc.frequency.setValueAtTime(783.99, now + 0.2);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+            osc.start(now); osc.stop(now + 0.4);
+        }
+    }
+
+    // サイコロの目(1-6)ごとのドット配置（3x3グリッドのインデックス、0〜8）
+    const DICE_DOT_PATTERNS = {
+        1: [4],
+        2: [0, 8],
+        3: [0, 4, 8],
+        4: [0, 2, 6, 8],
+        5: [0, 2, 4, 6, 8],
+        6: [0, 2, 3, 5, 6, 8]
+    };
+
+    function diceFaceHTML(value) {
+        const pattern = DICE_DOT_PATTERNS[value] || [];
+        let cells = '';
+        for (let i = 0; i < 9; i++) {
+            cells += `<div class="dice-dot-cell">${pattern.includes(i) ? '<div class="dice-dot"></div>' : ''}</div>`;
+        }
+        return `<div class="die-face">${cells}</div>`;
+    }
+
+    // 盤面中央に振られたダイスのグラフィックを表示し、一定時間後に自動で消す
+    function showDiceRoll(d1, d2) {
+        const overlay = document.getElementById('dice-overlay');
+        if (!overlay) return;
+        document.getElementById('die-1').innerHTML = diceFaceHTML(d1);
+        document.getElementById('die-2').innerHTML = diceFaceHTML(d2);
+        const badge = document.getElementById('dice-total-badge');
+        if (badge) badge.textContent = `合計 ${d1 + d2}`;
+
+        overlay.classList.remove('hidden', 'dice-pop-anim');
+        void overlay.offsetWidth; // アニメーション再生のための強制リフロー
+        overlay.classList.add('dice-pop-anim');
+
+        clearTimeout(overlay._hideTimer);
+        overlay._hideTimer = setTimeout(() => {
+            overlay.classList.add('hidden');
+            overlay.classList.remove('dice-pop-anim');
+        }, 1400);
+    }
+
+    let BOARD_SIZE = 13;
+    const SUITS = ['♠', '♥', '♦', '♣'];
+    const SUIT_CLASSES = { '♠': 'suit-spades', '♥': 'suit-hearts', '♦': 'suit-diamonds', '♣': 'suit-clubs' };
+
+    // ゲーム世代カウンタ。initGame()のたびに増やし、リセット前に予約された
+    // setTimeout/非同期処理(CPUの移動待機や行動遅延など)が、古い世代のまま
+    // 新しいゲームの状態を書き換えてしまうのを防ぐために使う。
+    let gameEpoch = 0;
+
+    let state = {
+        sharedDeck: [], discardPile: [], targetLaps: 7, maxHandSize: 8, turn: 0, phase: 'move',
+        players: [], board: Array(BOARD_SIZE).fill(null), selectedCardIndex: -1,
+        battle: null, useIndividualDecks: true, lapQueue: [], lapChallengePos: null,
+        lapDrawCount: 1, turnDrawEveryN: 1, turnDrawCount: 0, emptyHandBonus: 2, initialHandSize: 5
+    };
+
+    function addToDiscard(card, playerId) {
+        if (state.useIndividualDecks) {
+            state.players[playerId].discardPile.push(card);
+        } else {
+            state.discardPile.push(card);
+        }
+    }
+
+    function getTotalDiscardCount() {
+        if (state.useIndividualDecks) {
+            return state.players.reduce((sum, p) => sum + p.discardPile.length, 0);
+        } else {
+            return state.discardPile.length;
+        }
+    }
+
+    function shuffle(array) {
+        let currentIndex = array.length, randomIndex;
+        while (currentIndex !== 0) {
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex--;
+            [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+        }
+        return array;
+    }
+
+    function handleZoomChange() {
+        const auto = document.getElementById('zoom-auto').checked;
+        const slider = document.getElementById('zoom-slider');
+        const container = document.getElementById('board-scale-container');
+        const wrapper = document.getElementById('board-wrapper');
+        
+        if (!container || !wrapper) return;
+        
+        slider.disabled = auto;
+        slider.classList.toggle('opacity-50', auto);
+
+        if (auto) {
+            const rect = wrapper.getBoundingClientRect();
+            // 盤面のベースサイズは 500x500。余白を考慮して小さくする
+            let size = Math.min(rect.width, rect.height) - 40;
+            if (size < 100) size = 100; // fail-safe
+            let scale = size / 500;
+            container.style.transform = `scale(${scale})`;
+            slider.value = scale;
+        } else {
+            container.style.transform = `scale(${slider.value})`;
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        if (document.getElementById('zoom-auto').checked) {
+            handleZoomChange();
+        }
+    });
+
+    function toggleFooterMode() {
+        const useFooter = document.getElementById('footer-toggle').checked;
+        const panel = document.getElementById('player-ui-panel');
+        const footerContainer = document.getElementById('footer-container');
+        const sidebarContainer = document.getElementById('sidebar-container');
+        
+        if (useFooter) {
+            footerContainer.appendChild(panel);
+            footerContainer.classList.remove('hidden');
+            sidebarContainer.classList.add('hidden');
+        } else {
+            sidebarContainer.appendChild(panel);
+            sidebarContainer.classList.remove('hidden');
+            footerContainer.classList.add('hidden');
+        }
+        
+        // レイアウト変更後にズーム再計算
+        setTimeout(handleZoomChange, 50);
+    }
+
+    function animateCardDraw(playerIndex, count) {
+        const boardEl = document.getElementById('board');
+        // フッター/サイドバー両対応のため、ターゲットDOMをIDで直接取得
+        const targetEl = playerIndex === 0 ? document.getElementById('p0-hand') : document.getElementById(`p${playerIndex}-hand-count-container`);
+        
+        if (!targetEl || !boardEl) return;
+        
+        const boardRect = boardEl.getBoundingClientRect();
+        const startX = boardRect.left + boardRect.width / 2;
+        const startY = boardRect.top + boardRect.height / 2;
+        
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const card = document.createElement('div');
+                card.className = 'flying-card';
+                card.style.left = `${startX}px`;
+                card.style.top = `${startY}px`;
+                document.body.appendChild(card);
+
+                // reflow
+                card.getBoundingClientRect();
+                
+                // 表示してちょっと待ってから飛ばす
+                card.style.opacity = '1';
+                card.style.transform = 'scale(1)';
+                
+                setTimeout(() => {
+                    // 最新のターゲット位置を取得（リサイズなどで変わっている可能性があるため）
+                    const tRect = targetEl.getBoundingClientRect();
+                    const targetX = tRect.left + tRect.width / 2;
+                    const targetY = tRect.top + tRect.height / 2;
+
+                    card.style.left = `${targetX}px`;
+                    card.style.top = `${targetY}px`;
+                    card.style.opacity = '0.3';
+                    card.style.transform = 'scale(0.3) rotate(360deg)';
+                }, 50);
+
+                setTimeout(() => {
+                    card.remove();
+                    if (playerIndex > 0) {
+                        targetEl.classList.remove('pop-anim');
+                        void targetEl.offsetWidth;
+                        targetEl.classList.add('pop-anim');
+                    } else {
+                        // プレイヤーの場合は最後に追加されたカードをポヨンとさせる
+                        if (targetEl.lastElementChild) {
+                            targetEl.lastElementChild.classList.remove('pop-anim');
+                            void targetEl.lastElementChild.offsetWidth;
+                            targetEl.lastElementChild.classList.add('pop-anim');
+                        }
+                    }
+                }, 550);
+            }, i * 150);
+        }
+    }
+
+    function createDeck() {
+        let deck = [];
+        for (let s of SUITS) {
+            for (let v = 1; v <= 13; v++) {
+                let display = v === 1 ? 'A' : v === 11 ? 'J' : v === 12 ? 'Q' : v === 13 ? 'K' : v.toString();
+                deck.push({ suit: s, value: v, displayValue: display });
+            }
+        }
+        return shuffle(deck);
+    }
+
+    function drawCards(playerIndex, count) {
+        const player = state.players[playerIndex];
+        let actualDrawnCount = 0;
+
+        for (let i = 0; i < count; i++) {
+            // カードを引く前に必ず参照し、最大手札枚数より1以上小さい（手札数 <= maxHandSize - 1）場合のみ引く
+            if (player.hand.length <= state.maxHandSize - 1) {
+                if (state.useIndividualDecks) {
+                    if (player.deck.length === 0) {
+                        if (player.discardPile.length === 0) break;
+                        player.deck = shuffle([...player.discardPile]);
+                        player.discardPile = [];
+                        log(`${player.name} の山札が尽きたため、自身の捨て札をリシャッフルしました。`);
+                    }
+                    if (player.deck.length > 0) {
+                        player.hand.push(player.deck.pop());
+                        actualDrawnCount++;
+                    }
+                } else {
+                    if (state.sharedDeck.length === 0) {
+                        if (state.discardPile.length === 0) break;
+                        state.sharedDeck = shuffle([...state.discardPile]);
+                        state.discardPile = [];
+                        log(`山札が尽きたため、共通の捨て札をリシャッフルしました。`);
+                    }
+                    if (state.sharedDeck.length > 0) {
+                        player.hand.push(state.sharedDeck.pop());
+                        actualDrawnCount++;
+                    }
+                }
+            } else {
+                // 手札上限に達したためこれ以上引けない
+                break;
+            }
+        }
+
+        if (actualDrawnCount > 0) {
+            animateCardDraw(playerIndex, actualDrawnCount);
+        }
+        return actualDrawnCount;
+    }
+
+    function initGame() {
+        // 新しいゲーム世代にする。これより前に予約された非同期処理(CPUの移動/行動の遅延実行)は
+        // 世代の不一致を検知して自ら中断するため、リセット後に古い処理が状態を書き換えることはない。
+        gameEpoch++;
+
+        // バトル中や周回逆転バトルの確認中にリセットされた場合に備え、関連モーダル/オーバーレイを強制的に閉じる
+        document.getElementById('battle-modal').classList.remove('active');
+        document.getElementById('battle-return-overlay').classList.add('hidden');
+        document.getElementById('lap-challenge-modal').classList.remove('active');
+        document.getElementById('lap-challenge-return-overlay').classList.add('hidden');
+        const diceOverlay = document.getElementById('dice-overlay');
+        if (diceOverlay) { diceOverlay.classList.add('hidden'); diceOverlay.classList.remove('dice-pop-anim'); }
+
+        BOARD_SIZE = parseInt(document.getElementById('setting-board-size').value);
+        state.targetLaps = parseInt(document.getElementById('setting-laps').value);
+        state.initialHandSize = parseInt(document.getElementById('setting-initial-hand').value);
+        state.maxHandSize = parseInt(document.getElementById('setting-max-hand').value);
+        state.useIndividualDecks = document.getElementById('setting-individual-decks').value === 'true';
+        state.lapDrawCount = parseInt(document.getElementById('setting-lap-draw').value);
+        state.emptyHandBonus = parseInt(document.getElementById('setting-empty-hand-bonus').value);
+        state.turnDrawEveryN = parseInt(document.getElementById('setting-turn-draw-n').value);
+        state.turnDrawCount = parseInt(document.getElementById('setting-turn-draw-count').value);
+        
+        document.querySelectorAll('.target-laps-display').forEach(el => el.textContent = state.targetLaps);
+
+        const numPlayers = parseInt(document.getElementById('setting-players').value);
+
+        state.players = [];
+        const colors = ['blue', 'red', 'green', 'purple', 'orange', 'teal', 'pink', 'gray'];
+        const names = ['あなた', 'CPU 1', 'CPU 2', 'CPU 3', 'CPU 4', 'CPU 5', 'CPU 6', 'CPU 7'];
+        for (let i = 0; i < numPlayers; i++) {
+            state.players.push({ 
+                id: i, name: names[i], pos: 0, laps: 0, hand: [], color: colors[i],
+                deck: state.useIndividualDecks ? createDeck() : [],
+                discardPile: [],
+                grudge: {} // 恨み度: このプレイヤーが誰にどれだけ恨みを持っているか（対戦相手id -> 数値）
+            });
+        }
+
+        // 不要なCPUパネルを非表示
+        for (let i = 1; i <= 7; i++) {
+            const panel = document.getElementById(`cpu${i}-panel`);
+            if (panel) {
+                panel.style.display = numPlayers > i ? 'flex' : 'none';
+            }
+        }
+
+        if (!state.useIndividualDecks) {
+            state.sharedDeck = createDeck();
+            state.discardPile = [];
+        } else {
+            state.sharedDeck = [];
+            state.discardPile = [];
+        }
+        
+        state.board = Array(BOARD_SIZE).fill(null);
+        state.turn = 0;
+        state.phase = 'move';
+        state.selectedCardIndex = -1;
+        state.battle = null;
+        state.lapQueue = [];
+        state.lapChallengePos = null;
+        state.lapBattledPairs = new Set();
+
+        document.getElementById('game-over-modal').classList.remove('active');
+
+        document.getElementById('log').innerHTML = '';
+        log(`ゲーム開始！ 目標: ${state.targetLaps}周 (初期手札: ${state.initialHandSize}枚 / 最大手札: ${state.maxHandSize}枚)`);
+        for (let i = 0; i < numPlayers; i++) drawCards(i, state.initialHandSize);
+        applyTurnStartDraw(0); // 最初のプレイヤーの1ターン目としてカウントする
+
+        renderBoard();
+        updateUI();
+        
+        // 初期レイアウト計算
+        setTimeout(handleZoomChange, 100);
+    }
+
+    // 正方形の周回パスに沿ってN個のマスを均等な間隔で配置する（円形より隅の空間を無駄にせず、マスを大きく取れる）
+    // margin: パスの中心線が盤面の端からどれだけ内側にあるか（%）
+    // 正方形レイアウトのマスサイズと全マスの座標をまとめて計算する。
+    // 4隅を必ずマスの位置に一致させることで、辺をまたぐ斜めの詰まりを完全に回避しつつ、
+    // どのマス数でも隙間なく最大限詰められるようにする（余りは縦の辺=左右にわずかに多く配分し、少し詰まった見た目にする）。
+    function computeSquareLayout(N) {
+        const interior = Math.max(0, N - 4); // 4隅を除いた、辺の内側に入るマス数
+        const base = Math.floor(interior / 4);
+        const remainder = interior % 4;
+        const sideCounts = [base, base, base, base]; // [上, 右, 下, 左]
+        const order = [1, 3, 0, 2]; // 余りは 右→左→上→下 の順に配分（左右をわずかに優先）
+        for (let s = 0; s < remainder; s++) sideCounts[order[s]] += 1;
+
+        const maxSideCount = Math.max(...sideCounts);
+        const cellPercent = Math.max(6, Math.min(22, 100 / (maxSideCount + 2)));
+        const margin = cellPercent / 2;
+
+        const corners = [
+            { x: margin, y: margin },             // 左上 (GO)
+            { x: 100 - margin, y: margin },       // 右上
+            { x: 100 - margin, y: 100 - margin }, // 右下
+            { x: margin, y: 100 - margin }        // 左下
+        ];
+
+        const positions = [];
+        for (let s = 0; s < 4; s++) {
+            const from = corners[s];
+            const to = corners[(s + 1) % 4];
+            const steps = sideCounts[s] + 1; // このコーナー〜次のコーナーまでの区切り数
+            for (let k = 0; k < steps; k++) {
+                const t = k / steps;
+                positions.push({ left: from.x + (to.x - from.x) * t, top: from.y + (to.y - from.y) * t });
+            }
+        }
+        return { cellPercent, positions };
+    }
+
+    function renderBoard() {
+        const boardEl = document.getElementById('board');
+        boardEl.innerHTML = '';
+        
+        // 13マス以下は円形、16マス以上は四角形の周回パスにする
+        // （同じマス数でも四角形の方が盤面四隅の空間を有効活用でき、マスを大きく表示できるため）
+        const useSquareLayout = BOARD_SIZE >= 14;
+        let cellPercent;
+        let squarePositions = null;
+        if (useSquareLayout) {
+            const layout = computeSquareLayout(BOARD_SIZE);
+            cellPercent = layout.cellPercent;
+            squarePositions = layout.positions;
+        } else {
+            cellPercent = BOARD_SIZE <= 9 ? 22 : 18;
+        }
+        const radius = 50 - (cellPercent / 2);
+
+        for (let i = 0; i < BOARD_SIZE; i++) {
+            let cell = document.createElement('div');
+            cell.className = `cell cell-${i} ${i === 0 ? 'start-cell' : ''}`;
+            
+            let left, top;
+            if (useSquareLayout) {
+                left = squarePositions[i].left;
+                top = squarePositions[i].top;
+            } else {
+                const angle = (i / BOARD_SIZE) * 2 * Math.PI - Math.PI / 2;
+                left = 50 + radius * Math.cos(angle);
+                top = 50 + radius * Math.sin(angle);
+            }
+            
+            cell.style.left = `${left}%`;
+            cell.style.top = `${top}%`;
+            cell.style.width = `${cellPercent}%`;
+            cell.style.height = `${cellPercent}%`;
+
+            let num = document.createElement('div');
+            num.className = "absolute top-1 left-1 text-[10px] text-gray-400 font-bold leading-none";
+            num.textContent = i === 0 ? 'GO' : i;
+            cell.appendChild(num);
+
+            if (state.board[i]) {
+                let cellData = state.board[i];
+                let owner = cellData.player;
+                
+                // マス自体のスタイルを占有者の色に変更
+                const playerColors = [
+                    { border: '#3b82f6', bg: '#eff6ff' }, // 0: blue
+                    { border: '#ef4444', bg: '#fef2f2' }, // 1: red
+                    { border: '#10b981', bg: '#ecfdf5' }, // 2: green
+                    { border: '#8b5cf6', bg: '#f5f3ff' }, // 3: purple
+                    { border: '#f97316', bg: '#fff7ed' }, // 4: orange
+                    { border: '#14b8a6', bg: '#f0fdfa' }, // 5: teal
+                    { border: '#ec4899', bg: '#fdf2f8' }, // 6: pink
+                    { border: '#6b7280', bg: '#f9fafb' }  // 7: gray
+                ];
+                
+                cell.style.borderColor = playerColors[owner].border;
+                cell.style.backgroundColor = playerColors[owner].bg;
+                cell.style.borderWidth = '4px';
+                cell.style.boxShadow = `0 0 10px ${playerColors[owner].border}60`;
+
+                let cardWrapper = document.createElement('div');
+                cardWrapper.className = 'mt-1.5 z-10 scale-[1.7] transform';
+                
+                if (owner === 0 || cellData.revealed) {
+                    const borderColors = ['border-blue-500', 'border-red-500', 'border-green-500', 'border-purple-500', 'border-orange-500', 'border-teal-500', 'border-pink-500', 'border-gray-500'];
+                    // 自分が置いたカードで、まだ他プレイヤーには公開されていない(revealedでない)場合は、
+                    // 「本当は裏向き＝他人には見えていない」ことを示す小さな裏カードバッジを添える
+                    const hiddenBadge = (owner === 0 && !cellData.revealed)
+                        ? `<div class="hidden-card-badge card-back" title="他のプレイヤーにはまだ見えていません"></div>`
+                        : '';
+                    cardWrapper.innerHTML = `<div class="card-placed relative flex flex-col items-center border-b-[4px] ${borderColors[owner]} rounded bg-white p-1 shadow-md leading-none">
+                        ${hiddenBadge}
+                        <span class="${SUIT_CLASSES[cellData.card.suit]} text-base sm:text-lg font-black leading-none">${cellData.card.suit}${cellData.card.displayValue}</span>
+                    </div>`;
+                } else {
+                    cardWrapper.innerHTML = `<div class="w-8 h-12 card-back rounded shadow-md"></div>`;
+                }
+                cell.appendChild(cardWrapper);
+            }
+            boardEl.appendChild(cell);
+        }
+
+        state.players.forEach(p => {
+            let token = document.createElement('div');
+            token.className = `player-token player-${p.id}-token`;
+            if (boardEl.children[p.pos]) boardEl.children[p.pos].appendChild(token);
+        });
+    }
+
+    function updateUI() {
+        state.players.forEach((p, idx) => {
+            const panel = document.getElementById(idx === 0 ? 'p0-panel' : `cpu${idx}-panel`);
+            if (panel) {
+                if (state.turn === idx) panel.classList.add(idx === 0 ? 'active-turn-player' : 'active-turn-cpu');
+                else panel.classList.remove(idx === 0 ? 'active-turn-player' : 'active-turn-cpu');
+            }
+            const handCountEl = document.getElementById(`p${idx}-hand-count`);
+            const lapsEl = document.getElementById(`p${idx}-laps`);
+            const posEl = document.getElementById(`p${idx}-pos`);
+            if (handCountEl) handCountEl.textContent = p.hand.length;
+            if (lapsEl) lapsEl.textContent = p.laps;
+            if (posEl) posEl.textContent = p.pos;
+        });
+
+        // 自分の手札描画
+        const handEl = document.getElementById('p0-hand');
+        handEl.innerHTML = '';
+        state.players[0].hand.forEach((card, index) => {
+            let cEl = document.createElement('div');
+            cEl.className = `playing-card ${index === state.selectedCardIndex ? 'selected' : ''}`;
+            cEl.innerHTML = handCardInnerHTML(card);
+            cEl.onclick = () => { selectCard(index); playSE('card'); };
+            handEl.appendChild(cEl);
+        });
+
+        const isYourTurn = state.turn === 0;
+        const hasSelection = state.selectedCardIndex !== -1;
+        
+        const btnDice = document.getElementById('btn-dice');
+        const btnCardMove = document.getElementById('btn-card-move');
+        const btnPlaceCard = document.getElementById('btn-place-card');
+        const btnSwapCard = document.getElementById('btn-swap-card');
+        const btnSkipSwap = document.getElementById('btn-skip-swap');
+
+        setBtnEnabled(btnDice, isYourTurn && state.phase === 'move');
+        setBtnEnabled(btnCardMove, isYourTurn && state.phase === 'move' && hasSelection);
+        setBtnEnabled(btnPlaceCard, isYourTurn && state.phase === 'place_card' && hasSelection);
+        setBtnEnabled(btnSwapCard, isYourTurn && state.phase === 'own_cell_swap' && hasSelection);
+        setBtnEnabled(btnSkipSwap, isYourTurn && state.phase === 'own_cell_swap');
+        
+        document.getElementById('discard-count-btn').textContent = getTotalDiscardCount();
+    }
+
+    function selectCard(idx) {
+        const isPlayerInvolved = (state.turn === 0 && state.phase !== 'battle');
+        if (!isPlayerInvolved) return;
+        state.selectedCardIndex = state.selectedCardIndex === idx ? -1 : idx;
+        updateUI();
+    }
+
+    function log(msg) {
+        const logEl = document.getElementById('log');
+        const entry = document.createElement('div');
+        entry.className = "mb-1 pb-1 border-b border-gray-800 text-[11px] sm:text-xs text-gray-300";
+        entry.innerHTML = `<span class="text-gray-500 mr-1">[${new Date().toLocaleTimeString().split(':').slice(0,2).join(':')}]</span>${msg}`;
+        logEl.prepend(entry);
+    }
+
+    async function rollDiceAction() {
+        if (state.turn !== 0 || state.phase !== 'move') return;
+        playSE('dice');
+        let d1 = Math.floor(Math.random() * 6) + 1;
+        let d2 = Math.floor(Math.random() * 6) + 1;
+        let total = d1 + d2;
+        showDiceRoll(d1, d2);
+        log(`あなた はダイスで [🎲${d1}+🎲${d2}=${total}] を出しました。`);
+        await movePlayer(0, total);
+    }
+
+    async function useCardMoveAction() {
+        if (state.turn !== 0 || state.phase !== 'move' || state.selectedCardIndex === -1) return;
+        const card = state.players[0].hand.splice(state.selectedCardIndex, 1)[0];
+        let dist = card.value;
+        addToDiscard(card, 0);
+        state.selectedCardIndex = -1;
+
+        log(`あなた はカード [${card.suit}${card.displayValue}] で ${dist} マス進みます。`);
+        updateUI();
+        await movePlayer(0, dist);
+    }
+
+    async function movePlayer(pId, distance) {
+        const myEpoch = gameEpoch; // 呼び出された時点のゲーム世代を記憶しておく
+        const p = state.players[pId];
+        for (let i = 1; i <= distance; i++) {
+            p.pos = (p.pos + 1) % BOARD_SIZE;
+            if (p.pos === 0) {
+                p.laps++;
+                playSE('win');
+                log(`${p.name} がGOマス到達！周回数: ${p.laps}/${state.targetLaps}`);
+                
+                // 周回達成の瞬間、手札が0枚(手ぶら)だったかを先に判定しておく
+                const wasEmptyHanded = p.hand.length === 0;
+
+                if (state.lapDrawCount > 0) drawCards(pId, state.lapDrawCount);
+
+                if (wasEmptyHanded) {
+                    // 手ぶらボーナス：周回ごとの引き枚数とは別に、手ぶらだった場合のみ追加でドローする
+                    // 結果的に「手ぶらボーナス＋周回ごとの引き枚数」の手札になる
+                    if (state.emptyHandBonus > 0) drawCards(pId, state.emptyHandBonus);
+                } else {
+                    // 手札がちょうど1枚になってしまった場合は停滞を防ぐためさらに2枚、それ以外は+1枚を保証する
+                    let bonusCount = p.hand.length === 1 ? 2 : 1;
+                    drawCards(pId, bonusCount);
+                }
+                log(`${p.name} はGOマス到達でカードを追加ドローしました！（手札 ${p.hand.length}枚）`);
+                
+                if (p.laps >= state.targetLaps) { triggerGameOver(pId); return; }
+            } else {
+                const cell = state.board[p.pos];
+                if (cell && cell.player === pId) {
+                    log(`${p.name} は自分のマス(マス${p.pos})を通過し、カードを1枚引きました。`);
+                    drawCards(pId, 1);
+                    updateUI();
+                }
+            }
+            renderBoard();
+            await new Promise(r => setTimeout(r, 150));
+            if (myEpoch !== gameEpoch) return; // リセットにより世代が変わっていたら、ここで処理を打ち切る
+        }
+        if (myEpoch !== gameEpoch) return;
+        await handleLandedCell(pId);
+    }
+
+    async function handleLandedCell(pId) {
+        const myEpoch = gameEpoch;
+        const p = state.players[pId];
+        const cell = state.board[p.pos];
+        if (!cell) {
+            log(`${p.name} は空きマス(マス${p.pos})に止まりました。`);
+            state.phase = 'place_card';
+            if (pId !== 0) setTimeout(() => { if (myEpoch === gameEpoch) cpuPlaceCardTurn(pId); }, 600);
+        } else if (cell.player === pId) {
+            log(`${p.name} は自分のマス(マス${p.pos})に丁度止まりました。カードを1枚引きます。`);
+            drawCards(pId, 1);
+            if (pId === 0) {
+                state.phase = 'own_cell_swap';
+            } else {
+                setTimeout(() => { if (myEpoch === gameEpoch) cpuSwapTurn(pId); }, 600);
+            }
+        } else {
+            playSE('battle');
+            log(`${p.name} は ${state.players[cell.player].name} のマス(マス${p.pos})に止まった！`);
+            
+            if (p.hand.length === 0) {
+                log(`${p.name} は手札がないためバトルを仕掛けられませんでした。`);
+                startLapChallengePhase(p.pos, pId);
+            } else {
+                let atkCard;
+                if (pId === 0) {
+                    state.battle = {
+                        type: 'cell', attacker: pId, defender: cell.player, cellIndex: p.pos,
+                        defBaseCard: cell.card, atkBaseCard: null, defExtraCard: null, defExtraCards: [],
+                        atkBoosts: 0, defBoosts: 0, currentBoostTurn: null, boostRounds: 0,
+                        usedCards: [], subPhase: 'atk_set_prompt', isOpen: false, actionMsg: '',
+                        selectedCardIndices: []
+                    };
+                    state.phase = 'battle';
+                    state.selectedCardIndex = -1;
+                    document.getElementById('battle-modal').classList.add('active');
+                    updateBattleModal();
+                    return;
+                } else {
+                    // 相手の伏せカードの値は分からないため、平均値(7)を基準に手札の強さで攻撃意欲を判断する
+                    const bestIdx = findMaxCardIndex(p.hand);
+                    const bestVal = p.hand[bestIdx].value;
+                    let skipProb = bestVal >= 9 ? 0.05 : bestVal >= 6 ? 0.25 : 0.55;
+                    // 攻撃すると手札が0枚/1枚になる思い切った選択には、段階的にためらいを持たせる
+                    // (相手視点では手札1枚の差が最大13点相当になるため、安易には切らない)
+                    if (p.hand.length === 1) skipProb = Math.min(0.9, skipProb + 0.35);
+                    else if (p.hand.length === 2) skipProb = Math.min(0.85, skipProb + 0.15);
+
+                    // マスのカードが見えている（所有者=あなた、または公開済み）場合の判断材料
+                    const isCellVisible = cell.player === 0 || cell.revealed;
+                    // 見えているKに手札1枚では絶対に勝てず、負ければ即座に手札が尽きるため、
+                    // 本気の攻撃はもちろん、はったりも含めて絶対に攻撃を仕掛けない
+                    const neverAttack = isCellVisible && cell.card.value === 13 && p.hand.length === 1;
+                    // はったりは「手札を失うだけ」のリスクなので、残り枚数が少ないほど仕掛けにくくする
+                    const bluffProb = p.hand.length <= 1 ? 0 : p.hand.length === 2 ? 0.1 : 0.2;
+
+                    let atkIdx = -1;
+                    let isBluff = false;
+                    if (!neverAttack && Math.random() >= skipProb) {
+                        // 勝ち筋があるので本気の攻撃：最強カードを使う
+                        atkIdx = bestIdx;
+                    } else if (!neverAttack && Math.random() < bluffProb) {
+                        // 勝つ気はないが、伏せカードで攻める「はったり」を仕掛け、相手の警戒による手札消費を誘う
+                        atkIdx = 0;
+                        for (let i = 1; i < p.hand.length; i++) {
+                            if (p.hand[i].value < p.hand[atkIdx].value) atkIdx = i;
+                        }
+                        isBluff = true;
+                    } else {
+                        log(`${p.name} は戦闘を仕掛けずパスしました。`);
+                        startLapChallengePhase(p.pos, pId);
+                        return;
+                    }
+
+                    atkCard = p.hand.splice(atkIdx, 1)[0];
+                    
+                    state.battle = {
+                        type: 'cell', attacker: pId, defender: cell.player, cellIndex: p.pos,
+                        defBaseCard: cell.card, atkBaseCard: atkCard, defExtraCard: null, defExtraCards: [],
+                        atkBoosts: 0, defBoosts: 0, currentBoostTurn: null, boostRounds: 0,
+                        usedCards: [{ card: atkCard, owner: pId }], subPhase: 'def_set_prompt', isOpen: false,
+                        actionMsg: `${p.name} は戦闘を仕掛け、伏せカードをセットしました。`,
+                        selectedCardIndices: [], isBluff: isBluff
+                    };
+                    state.phase = 'battle';
+                    state.selectedCardIndex = -1;
+                    document.getElementById('battle-modal').classList.add('active');
+                    updateBattleModal();
+                    return;
+                }
+            }
+        }
+        updateUI();
+    }
+
+    // マスに元カードが存在せず、防御側が何枚でもカードを出せるタイプのバトルかどうか
+    // （周回逆転バトル/蹴落としバトルは共通の仕組みで、勝敗時の効果だけが異なる）
+    function isLapStyleBattle(b) {
+        return b.type === 'lap' || b.type === 'kickdown';
+    }
+
+    // 行動後に残る手札枚数に応じて、思い切った選択をどれだけためらうかの倍率を返す。
+    // 相手視点では手札1枚の差は最大13点相当になるため、0枚(大きくためらう)はもちろん、
+    // 1枚だけになる(多少ためらう)選択にも軽いブレーキをかける。
+    function handConservationFactor(remainAfter) {
+        if (remainAfter <= 0) return 0.3;
+        if (remainAfter === 1) return 0.65;
+        return 1;
+    }
+
+    // ブースト戦を続けるかどうかの判断。単純な必要枚数だけでなく、
+    // 「相手がまだどれだけ粘れるか」「この戦いで既に何度ブーストを重ねたか」を加味することで、
+    // 勝ち目の薄い泥仕合で手札を溶かし続けるのを防ぎつつ、優勢な戦いでは踏みとどまれるようにする。
+    function cpuBoostDecision(b) {
+        const p = state.players[b.currentBoostTurn];
+        const opponent = state.players[b.currentBoostTurn === b.attacker ? b.defender : b.attacker];
+        const req = getRequiredBoosts();
+
+        if (p.hand.length < req) return { canBoost: false, req };
+
+        const isBluffingAttacker = b.isBluff && b.currentBoostTurn === b.attacker;
+        let willingness = isBluffingAttacker ? 0.05 : (req <= 2 ? 0.95 : req <= 4 ? 0.6 : req <= 6 ? 0.3 : 0.12);
+
+        // 手札面の有利不利：ブースト後、相手より自分の方が手札に余裕があるなら押し切りやすく、
+        // 逆に相手の方が余裕がある（何度でも上乗せしてきそうな）泥仕合は避けたい
+        const remainAfter = p.hand.length - req;
+        const handEdge = remainAfter - opponent.hand.length;
+        if (handEdge >= 3) willingness = Math.min(0.97, willingness * 1.4);
+        else if (handEdge <= -3) willingness *= 0.4;
+
+        // 手札が0枚/1枚になる思い切った選択には従来通りブレーキをかける
+        willingness *= handConservationFactor(remainAfter);
+
+        // 同じバトルでブーストの応酬が続くほど「これ以上は深追いしない」という損切り思考が強まる
+        const rounds = b.boostRounds || 0;
+        if (rounds >= 2) willingness *= Math.pow(0.65, rounds - 1);
+
+        return { canBoost: true, req, willBoost: Math.random() < Math.min(0.97, willingness) };
+    }
+
+    // バトルの攻撃力・防御力を計算（複数箇所で使用する共通ロジック）
+    // defBaseCard は周回逆転バトルでは null（マスの元カードが存在しない）、defExtraCards は複数枚防御に対応
+    function getBattleValues(b) {
+        const atkVal = b.atkBaseCard.value + b.atkBoosts;
+        let defVal = (b.defBaseCard ? b.defBaseCard.value : 0) + b.defBoosts;
+        if (b.defExtraCard) defVal += b.defExtraCard.value;
+        if (b.defExtraCards) defVal += b.defExtraCards.reduce((sum, c) => sum + c.value, 0);
+        return { atkVal, defVal };
+    }
+
+    // 手札の中から最大数値のカードのインデックスを返す（空なら-1）
+    function findMaxCardIndex(hand) {
+        if (hand.length === 0) return -1;
+        let maxIdx = 0;
+        for (let i = 1; i < hand.length; i++) {
+            if (hand[i].value > hand[maxIdx].value) maxIdx = i;
+        }
+        return maxIdx;
+    }
+
+    // ボタンの有効/無効とそれに伴う見た目クラスをまとめて切り替える
+    function setBtnEnabled(btn, enabled) {
+        btn.disabled = !enabled;
+        btn.classList.toggle('opacity-50', !enabled);
+        btn.classList.toggle('cursor-not-allowed', !enabled);
+    }
+
+    // 手札カード内部のHTML（スート+数値）を生成する共通テンプレート
+    function handCardInnerHTML(card) {
+        return `<div class="flex flex-col items-center leading-none"><span class="${SUIT_CLASSES[card.suit]} text-base">${card.suit}</span><span class="mt-0.5 text-sm">${card.displayValue}</span></div>`;
+    }
+
+    // CPUが防御側の時のカード追加を一括で行う（マス争奪バトル/周回逆転バトル共通）
+    // マス争奪バトルは最大1枚まで、周回逆転バトルは何枚でも追加できるルールの違いをここで吸収する
+    // 周回逆転バトルでCPUが防御側の時、初期に何枚・どのカードを出すかを決める。
+    // 定石: (1)相手の最大想定値[13+相手の残り手札]を余裕をもって上回れるなら、その分だけ出して確実に守る
+    //       (2)無理なら、次が自分の手番かどうかで「温存するか使い切るか」を切り替える
+    //       (3)勝ち目が薄ければ0枚で見送る
+    function cpuLapDefenseDecision(b) {
+        const defender = state.players[b.defender];
+        const attacker = state.players[b.attacker];
+        const hand = defender.hand;
+        if (hand.length === 0) return [];
+
+        const sortedDesc = hand.map((c, idx) => ({ c, idx })).sort((x, y) => y.c.value - x.c.value);
+        const totalSum = hand.reduce((s, c) => s + c.value, 0);
+        // 相手の伏せカード最大値(13)+相手の残り手札(=理論上のブースト最大枚数)を基準にした安全圏
+        const safeThreshold = 12 + attacker.hand.length;
+        // 次の手番が自分なら、手札を温存する価値が下がる
+        const isNextUp = ((state.turn + 1) % state.players.length) === b.defender;
+
+        // 余裕をもって安全圏を作れるなら、必要な分だけ強い方から出して確実に守る
+        if (totalSum >= safeThreshold + 2) {
+            // まず1枚は温存できないか試し、それでも安全圏に届くならそちらを優先する
+            const tryReach = (reserve) => {
+                let sum = 0;
+                const chosen = [];
+                const usable = Math.max(0, sortedDesc.length - reserve);
+                for (let i = 0; i < usable; i++) {
+                    if (sum >= safeThreshold) break;
+                    chosen.push(sortedDesc[i].idx);
+                    sum += sortedDesc[i].c.value;
+                }
+                return { chosen, sum };
+            };
+            let result = tryReach(1);
+            if (result.sum < safeThreshold) result = tryReach(0); // 温存できなければやむを得ず全力で守る
+            return result.chosen.sort((x, y) => y - x);
+        }
+
+        // 安全圏を作れない場合、勝ち目が薄いかどうかを判断する
+        const hopeless = totalSum < safeThreshold * 0.5 || (hand.length <= 1 && !isNextUp);
+        if (hopeless && !isNextUp) return []; // 守り切れない可能性が高いので見送る
+
+        let commitCount;
+        if (isNextUp) {
+            // すぐ自分の手番が来るので手札を残す価値が低く、使い切りやすい構えにする
+            commitCount = Math.max(hopeless ? 1 : 0, Math.min(hand.length, Math.ceil(hand.length * 0.6)));
+        } else {
+            // 手札の余裕に応じて、最大数値付近のカードを数枚だけ温存して守る
+            commitCount = Math.min(hand.length, hand.length >= 6 ? 2 : hand.length >= 3 ? 1 : 0);
+        }
+
+        // 手札が0枚/1枚になる思い切った選択は、相手視点で1枚の差が最大13点相当になることを踏まえ、段階的にためらう
+        if (commitCount > 0) {
+            const remain = hand.length - commitCount;
+            if (remain === 0 && Math.random() > 0.3) commitCount -= 1;       // 0枚化は大きくためらう(70%で1枚残す)
+            else if (remain === 1 && Math.random() > 0.6) commitCount -= 1;  // 1枚化も多少ためらう(40%でさらに1枚残す)
+        }
+
+        return sortedDesc.slice(0, commitCount).map(x => x.idx).sort((x, y) => y - x);
+    }
+
+    function cpuCommitDefense(b) {
+        const defPlayer = state.players[b.defender];
+        if (isLapStyleBattle(b)) {
+            const chosenIndices = cpuLapDefenseDecision(b);
+            const cards = [];
+            for (let idx of chosenIndices) {
+                const c = defPlayer.hand.splice(idx, 1)[0];
+                cards.push(c);
+                b.usedCards.push({ card: c, owner: b.defender });
+            }
+            b.defExtraCards = cards;
+            b.actionMsg = cards.length > 0
+                ? `${defPlayer.name} が防御カードを ${cards.length} 枚追加しました。`
+                : `${defPlayer.name} はカードを追加しませんでした。`;
+            if (cards.length > 0) playSE('card');
+        } else {
+            // 元々60%(乱数>0.4)で追加していたが、それが最後の1枚/残り1枚になる場合は段階的にためらう
+            const wouldEmptyHand = defPlayer.hand.length === 1;
+            const wouldLeaveOne = defPlayer.hand.length === 2;
+            const addThreshold = wouldEmptyHand ? 0.8 : wouldLeaveOne ? 0.55 : 0.4;
+            if (defPlayer.hand.length > 0 && Math.random() > addThreshold) {
+                const c = defPlayer.hand.splice(findMaxCardIndex(defPlayer.hand), 1)[0];
+                b.defExtraCard = c;
+                b.usedCards.push({ card: c, owner: b.defender });
+                b.actionMsg = `${defPlayer.name} が防御カードを追加しました。`;
+                playSE('card');
+            } else {
+                b.actionMsg = `${defPlayer.name} はカードを追加しませんでした。`;
+            }
+        }
+    }
+
+    function createCardHTML(card, isFaceDown = false) {
+        if (isFaceDown) {
+            return `<div class="w-12 h-18 sm:w-14 sm:h-20 card-back rounded shadow-md"></div>`;
+        }
+        const color = (card.suit === '♥' || card.suit === '♦') ? 'text-red-500' : 'text-gray-800';
+        return `<div class="playing-card !w-12 !h-18 sm:!w-14 sm:!h-20 !shadow-md !translate-y-0 !cursor-default !pointer-events-none transform">
+            <div class="flex flex-col items-center leading-none">
+                <span class="${color} text-lg sm:text-xl">${card.suit}</span>
+                <span class="mt-1 text-sm sm:text-base font-bold text-gray-900">${card.displayValue}</span>
+            </div>
+        </div>`;
+    }
+
+    // 現在このカードクリックが「複数選択モード」(ブースト、または周回逆転バトルの防御)かどうか判定
+    function isMultiSelectBattlePhase(b) {
+        if (!b) return false;
+        if (b.subPhase === 'boost_prompt' && b.currentBoostTurn === 0) return true;
+        if (b.subPhase === 'def_set_prompt' && b.defender === 0 && isLapStyleBattle(b)) return true;
+        return false;
+    }
+
+    function renderBattleHand() {
+        const handEl = document.getElementById('battle-player-hand');
+        handEl.innerHTML = '';
+        const b = state.battle;
+        
+        state.players[0].hand.forEach((card, index) => {
+            let cEl = document.createElement('div');
+            
+            let isSelected = isMultiSelectBattlePhase(b) ? b.selectedCardIndices.includes(index) : state.selectedCardIndex === index;
+            
+            cEl.className = `playing-card ${isSelected ? 'selected' : ''}`;
+            cEl.innerHTML = `<div class="flex flex-col items-center leading-none"><span class="${SUIT_CLASSES[card.suit]} text-base">${card.suit}</span><span class="mt-0.5 text-sm font-bold">${card.displayValue}</span></div>`;
+            cEl.onclick = () => { 
+                if (isMultiSelectBattlePhase(b)) {
+                    if (b.selectedCardIndices.includes(index)) {
+                        b.selectedCardIndices = b.selectedCardIndices.filter(i => i !== index);
+                    } else {
+                        b.selectedCardIndices.push(index);
+                    }
+                } else {
+                    state.selectedCardIndex = state.selectedCardIndex === index ? -1 : index; 
+                }
+                playSE('card'); 
+                updateBattleModal(); 
+            };
+            handEl.appendChild(cEl);
+        });
+    }
+
+    function updateBattleModal() {
+        if (!state.battle) return;
+        const b = state.battle;
+        const atk = state.players[b.attacker];
+        const def = state.players[b.defender];
+        const titleEl = document.getElementById('battle-title');
+        if (titleEl) titleEl.textContent = b.type === 'kickdown' ? '⚡ 蹴落としバトル' : (b.type === 'lap' ? '🔄 周回逆転バトル' : '⚔️ バトル');
+
+        document.getElementById('battle-atk-name').textContent = isLapStyleBattle(b) ? `${atk.name} (周回${atk.laps})` : atk.name;
+        document.getElementById('battle-atk-hand-count').textContent = atk.hand.length;
+        document.getElementById('battle-def-name').textContent = isLapStyleBattle(b) ? `${def.name} (周回${def.laps})` : def.name;
+        document.getElementById('battle-def-hand-count').textContent = def.hand.length;
+
+        const atkCardArea = document.getElementById('battle-atk-card-area');
+        atkCardArea.innerHTML = '';
+        if (b.atkBaseCard) {
+            if (b.isOpen) atkCardArea.innerHTML = createCardHTML(b.atkBaseCard);
+            else atkCardArea.innerHTML = createCardHTML(null, true);
+        }
+
+        // マスに元々あったカード(defBaseCard)は、公開(isOpen)前は
+        // 「あなたの所有マス」または「過去に公開済み」の場合のみ見えてよい。それ以外は伏せる。
+        const defBaseKnown = b.isOpen || (b.cellIndex !== null && state.board[b.cellIndex] &&
+            (state.board[b.cellIndex].player === 0 || state.board[b.cellIndex].revealed));
+
+        const defCardArea = document.getElementById('battle-def-card-area');
+        defCardArea.innerHTML = '';
+        if (b.defBaseCard) defCardArea.innerHTML += createCardHTML(b.defBaseCard, !defBaseKnown);
+        if (b.defExtraCard) defCardArea.innerHTML += createCardHTML(b.defExtraCard);
+        if (b.defExtraCards) b.defExtraCards.forEach(c => { defCardArea.innerHTML += createCardHTML(c); });
+
+        if (b.isOpen) {
+            const { atkVal, defVal } = getBattleValues(b);
+            document.getElementById('battle-atk-power').textContent = atkVal + (b.atkBoosts > 0 ? ` (+${b.atkBoosts})` : '');
+            document.getElementById('battle-def-power').textContent = defVal + (b.defBoosts > 0 ? ` (+${b.defBoosts})` : '');
+        } else {
+            let defInitialVal = b.defBaseCard ? b.defBaseCard.value : 0;
+            if (b.defExtraCard) defInitialVal += b.defExtraCard.value;
+            if (b.defExtraCards) defInitialVal += b.defExtraCards.reduce((s, c) => s + c.value, 0);
+            document.getElementById('battle-atk-power').textContent = '?';
+            document.getElementById('battle-def-power').textContent = defBaseKnown ? defInitialVal : '?';
+        }
+
+        const msgEl = document.getElementById('battle-message');
+        const playerArea = document.getElementById('battle-player-area');
+        const nextArea = document.getElementById('battle-next-area');
+        
+        playerArea.classList.add('hidden');
+        nextArea.classList.add('hidden');
+        ['atk', 'def', 'boost'].forEach(t => document.getElementById(`battle-btn-${t}`).classList.add('hidden'));
+
+        const isPlayerPrompt = (b.subPhase === 'atk_set_prompt' && b.attacker === 0) ||
+                               (b.subPhase === 'def_set_prompt' && b.defender === 0) ||
+                               (b.subPhase === 'boost_prompt' && b.currentBoostTurn === 0);
+
+        if (isPlayerPrompt) {
+            playerArea.classList.remove('hidden');
+            renderBattleHand();
+            const hasSel = state.selectedCardIndex !== -1;
+
+            if (b.subPhase === 'atk_set_prompt') {
+                msgEl.textContent = b.type === 'cell'
+                    ? "手札から伏せカードを選んで攻撃するか、パスできます。"
+                    : "手札から伏せカードを選んで攻撃してください。";
+                document.getElementById('battle-btn-atk').classList.remove('hidden');
+                document.getElementById('battle-atk-pass-btn').classList.toggle('hidden', b.type !== 'cell');
+                
+                setBtnEnabled(document.getElementById('battle-submit-atk'), hasSel);
+            } else if (b.subPhase === 'def_set_prompt') {
+                document.getElementById('battle-btn-def').classList.remove('hidden');
+                const btnDef = document.getElementById('battle-submit-def');
+
+                if (isLapStyleBattle(b)) {
+                    msgEl.textContent = b.actionMsg || "防御側：手札から好きな枚数のカードを追加できます。";
+                    const selCount = b.selectedCardIndices.length;
+                    btnDef.textContent = selCount > 0 ? `${selCount}枚追加して防御` : `追加するカードを選択`;
+                    setBtnEnabled(btnDef, selCount > 0);
+                } else {
+                    msgEl.textContent = b.actionMsg || "防御側：手札から追加カードを出せます。";
+                    btnDef.textContent = `防御カード追加`;
+                    setBtnEnabled(btnDef, hasSel);
+                }
+            } else if (b.subPhase === 'boost_prompt') {
+                msgEl.textContent = `手札を任意の枚数捨てて数値を +（捨てた枚数） できます。`;
+                document.getElementById('battle-btn-boost').classList.remove('hidden');
+                
+                const submitBtn = document.getElementById('battle-submit-boost');
+                const selCount = b.selectedCardIndices.length;
+                
+                if (selCount > 0) {
+                    submitBtn.textContent = `${selCount}枚捨てて +${selCount}`;
+                } else {
+                    submitBtn.textContent = `ブーストするカードを選択`;
+                }
+                
+                setBtnEnabled(submitBtn, selCount > 0);
+            }
+        } else {
+            nextArea.classList.remove('hidden');
+            if (b.subPhase === 'def_set_prompt') msgEl.textContent = b.actionMsg || `${def.name} が防御カードを選択中...`;
+            else if (b.subPhase === 'boost_prompt') msgEl.textContent = `${state.players[b.currentBoostTurn].name} がブースト考慮中...`;
+            else if (b.subPhase === 'resolve') {
+                const { atkVal, defVal } = getBattleValues(b);
+                if (b.type === 'lap') {
+                    if (atkVal > defVal) msgEl.textContent = `🔄 決着！ ${atk.name} の勝利！周回数が入れ替わります！`;
+                    else msgEl.textContent = `🛡️ 決着！ ${def.name} が周回を守り切りました！`;
+                } else if (b.type === 'kickdown') {
+                    if (atkVal > defVal) msgEl.textContent = `⚡ 決着！ ${atk.name} の勝利！${def.name} の周回数が1つ減ります！`;
+                    else msgEl.textContent = `🛡️ 決着！ ${def.name} が蹴落としを防ぎ切りました！`;
+                } else {
+                    if (atkVal > defVal) msgEl.textContent = `🎉 決着！ ${atk.name} の勝利！マスを奪取！`;
+                    else msgEl.textContent = `🛡️ 決着！ ${def.name} の勝利！マスを防衛！`;
+                }
+            }
+        }
+    }
+
+    function nextBattleStep() {
+        const b = state.battle;
+        if (!b) return;
+
+        if (b.subPhase === 'def_set_prompt') {
+            cpuCommitDefense(b);
+            b.isOpen = true;
+            determineBoostTurnForModal();
+        }
+        else if (b.subPhase === 'boost_prompt') {
+            const p = state.players[b.currentBoostTurn];
+            const decision = cpuBoostDecision(b);
+            const req = decision.req;
+
+            if (!decision.canBoost) {
+                b.actionMsg = `${p.name} は手札が足りずブーストをパスしました。`;
+                b.didBoost = false;
+            } else if (!decision.willBoost) {
+                b.actionMsg = `${p.name} は分が悪いと判断し、ブーストをパスしました。`;
+                b.didBoost = false;
+            } else {
+                let indices = p.hand.map((card, idx) => ({ card, idx }));
+                indices.sort((x, y) => x.card.value - y.card.value);
+                let dropIndices = indices.slice(0, req).map(i => i.idx).sort((x, y) => y - x);
+                
+                for (let idx of dropIndices) {
+                    const c = p.hand.splice(idx, 1)[0];
+                    b.usedCards.push({ card: c, owner: b.currentBoostTurn });
+                }
+                
+                if (b.currentBoostTurn === b.attacker) b.atkBoosts += req;
+                else b.defBoosts += req;
+                
+                b.boostRounds = (b.boostRounds || 0) + 1;
+                b.actionMsg = `🔥 ${p.name} が手札を ${req} 枚捨てて逆転しました！`;
+                b.didBoost = true;
+                playSE('card');
+            }
+
+            if (b.didBoost) {
+                determineBoostTurnForModal();
+            } else {
+                b.subPhase = 'resolve';
+                playSE('battle');
+            }
+        }
+        else if (b.subPhase === 'resolve') {
+            executeBattleResolve();
+            return;
+        }
+        
+        updateBattleModal();
+    }
+
+    function getRequiredBoosts() {
+        const b = state.battle;
+        const { atkVal, defVal } = getBattleValues(b);
+        
+        if (b.currentBoostTurn === b.attacker) {
+            // 攻撃側は同数では負ける（防御側の勝ち）ため、上回るのに+1必要
+            return defVal - atkVal + 1;
+        } else {
+            // 防御側は同数でも勝てるため、追いつくだけでよい（+1不要）
+            return atkVal - defVal;
+        }
+    }
+
+    function handleBattleInput(type, val) {
+        const b = state.battle;
+        if (type === 'atk_set') {
+            if (!val) {
+                // マス争奪バトルのみ想定：攻撃を仕掛けずパスする（手札もカードも失わない）
+                log(`あなた は攻撃を仕掛けずパスしました。`);
+                state.battle = null;
+                state.selectedCardIndex = -1;
+                document.getElementById('battle-modal').classList.remove('active');
+                document.getElementById('battle-return-overlay').classList.add('hidden');
+                startLapChallengePhase(state.players[0].pos, 0);
+                return;
+            }
+            const card = state.players[0].hand.splice(state.selectedCardIndex, 1)[0];
+            b.atkBaseCard = card;
+            b.usedCards.push({ card: card, owner: b.attacker });
+            
+            if (b.defender === 0) {
+                b.actionMsg = `あなたが防御カードを追加するか選択してください。`;
+                b.subPhase = 'def_set_prompt';
+                b.selectedCardIndices = [];
+            } else {
+                cpuCommitDefense(b);
+                b.isOpen = true;
+                determineBoostTurnForModal();
+            }
+            playSE('card');
+        }
+        else if (type === 'def_set') {
+            if (val) {
+                if (isLapStyleBattle(b)) {
+                    const indices = [...b.selectedCardIndices].sort((x, y) => y - x);
+                    const cards = [];
+                    for (let idx of indices) {
+                        const card = state.players[0].hand.splice(idx, 1)[0];
+                        cards.push(card);
+                        b.usedCards.push({ card: card, owner: b.defender });
+                    }
+                    b.defExtraCards = cards;
+                    b.actionMsg = `あなたは防御カードを ${cards.length} 枚追加しました。`;
+                } else {
+                    const card = state.players[0].hand.splice(state.selectedCardIndex, 1)[0];
+                    b.defExtraCard = card;
+                    b.usedCards.push({ card: card, owner: b.defender });
+                    b.actionMsg = `あなたが防御カードを追加しました。`;
+                }
+                playSE('card');
+            } else {
+                b.actionMsg = `あなたはカードを追加しませんでした。`;
+            }
+            b.isOpen = true;
+            b.selectedCardIndices = [];
+            determineBoostTurnForModal();
+        }
+        else if (type === 'boost') {
+            if (val) {
+                const indices = [...b.selectedCardIndices].sort((x, y) => y - x);
+                const count = indices.length;
+                
+                for (let idx of indices) {
+                    const card = state.players[0].hand.splice(idx, 1)[0];
+                    b.usedCards.push({ card: card, owner: b.currentBoostTurn });
+                }
+                
+                if (b.currentBoostTurn === b.attacker) b.atkBoosts += count;
+                else b.defBoosts += count;
+                
+                b.boostRounds = (b.boostRounds || 0) + 1;
+                b.actionMsg = `🔥 あなたは手札を ${count} 枚捨てて数値を +${count} しました。`;
+                b.didBoost = true;
+                playSE('card');
+            } else {
+                b.actionMsg = `あなたはブーストをパスしました。`;
+                b.didBoost = false;
+            }
+
+            if (b.didBoost) {
+                determineBoostTurnForModal();
+            } else {
+                b.subPhase = 'resolve';
+                playSE('battle');
+            }
+            b.selectedCardIndices = [];
+        }
+        state.selectedCardIndex = -1;
+        updateBattleModal();
+    }
+
+    function determineBoostTurnForModal() {
+        const b = state.battle;
+        const { atkVal, defVal } = getBattleValues(b);
+
+        if (atkVal < defVal) b.currentBoostTurn = b.attacker;
+        else if (atkVal > defVal) b.currentBoostTurn = b.defender;
+        else {
+            b.currentBoostTurn = b.attacker;
+        }
+        
+        b.subPhase = 'boost_prompt';
+        state.selectedCardIndex = -1;
+        b.selectedCardIndices = [];
+    }
+
+    function executeBattleResolve() {
+        const b = state.battle;
+        const { atkVal, defVal } = getBattleValues(b);
+        const type = b.type || 'cell';
+
+        log(`⚔️ バトル結果: [攻撃:${atkVal}] vs [防御:${defVal}]`);
+
+        let lapChallengeContinue = false;
+        let landingPos = null;
+        let landingMoverPid = null;
+
+        if (type === 'lap' || type === 'kickdown') {
+            const atkP = state.players[b.attacker];
+            const defP = state.players[b.defender];
+            // 今回の着地イベント中、この2人は既に対戦したペアとして記録し、以降の再戦を防ぐ
+            if (!state.lapBattledPairs) state.lapBattledPairs = new Set();
+            state.lapBattledPairs.add(lapPairKey(b.attacker, b.defender));
+            if (atkVal > defVal) {
+                if (type === 'lap') {
+                    const tmp = atkP.laps;
+                    atkP.laps = defP.laps;
+                    defP.laps = tmp;
+                    log(`🔄 ${atkP.name} が ${defP.name} との周回逆転バトルに勝利！周回数が入れ替わりました！（${atkP.name}: ${atkP.laps}周 / ${defP.name}: ${defP.laps}周）`);
+                } else {
+                    defP.laps = Math.max(0, defP.laps - 1);
+                    log(`⚡ ${atkP.name} が ${defP.name} との蹴落としバトルに勝利！${defP.name} の周回数が1つ減りました！（${defP.name}: ${defP.laps}周）`);
+                }
+                // 敗れた側は勝った側への恨みを蓄積する（周回逆転は影響が大きいのでより深く恨む）
+                if (!defP.grudge) defP.grudge = {};
+                defP.grudge[atkP.id] = (defP.grudge[atkP.id] || 0) + (type === 'lap' ? 2.5 : 1.5);
+                playSE('win');
+            } else {
+                log(type === 'lap'
+                    ? `🛡️ ${defP.name} が周回逆転バトルを防ぎ切りました！`
+                    : `🛡️ ${defP.name} が蹴落としバトルを防ぎ切りました！`);
+            }
+            b.usedCards.forEach(uc => addToDiscard(uc.card, uc.owner));
+            lapChallengeContinue = true; // 既存のキューを継続する
+        } else {
+            const cellIdx = b.cellIndex;
+            if (atkVal > defVal) {
+                log(`🎉 ${state.players[b.attacker].name} がマスを奪いました！`);
+                addToDiscard(state.board[cellIdx].card, b.defender);
+                state.board[cellIdx] = { player: b.attacker, card: b.atkBaseCard, revealed: true };
+                b.usedCards.forEach(uc => { if (uc.card !== b.atkBaseCard) addToDiscard(uc.card, uc.owner); });
+            } else {
+                log(`🛡️ ${state.players[b.defender].name} がマスを守り切りました！`);
+                state.board[cellIdx].revealed = true;
+                b.usedCards.forEach(uc => addToDiscard(uc.card, uc.owner));
+            }
+            landingPos = cellIdx;
+            landingMoverPid = b.attacker; // マス争奪バトルの攻撃側 = このマスに着地したプレイヤー
+        }
+
+        state.battle = null;
+        state.selectedCardIndex = -1;
+        document.getElementById('battle-modal').classList.remove('active');
+        document.getElementById('battle-return-overlay').classList.add('hidden');
+        renderBoard();
+        updateUI();
+
+        if (lapChallengeContinue) {
+            processNextLapChallenge();
+        } else {
+            startLapChallengePhase(landingPos, landingMoverPid);
+        }
+    }
+
+    function placeCardAction() {
+        if (state.turn !== 0 || state.phase !== 'place_card' || state.selectedCardIndex === -1) return;
+        const pos = state.players[0].pos;
+        const card = state.players[0].hand.splice(state.selectedCardIndex, 1)[0];
+        state.board[pos] = { player: 0, card: card, revealed: false };
+        state.selectedCardIndex = -1;
+        playSE('card');
+        log(`あなた はマス${pos}にカード [${card.suit}${card.displayValue}] を設置しました。`);
+        renderBoard();
+        startLapChallengePhase(pos, 0);
+    }
+
+    function swapCardAction() {
+        if (state.turn !== 0 || state.phase !== 'own_cell_swap' || state.selectedCardIndex === -1) return;
+        const pos = state.players[0].pos;
+        const oldCard = state.board[pos].card;
+        const newCard = state.players[0].hand.splice(state.selectedCardIndex, 1)[0];
+        
+        state.board[pos].card = newCard;
+        state.board[pos].revealed = false; // 新しく置いたカードは未公開の裏向き状態に戻す
+        addToDiscard(oldCard, 0);
+        
+        state.selectedCardIndex = -1;
+        playSE('card');
+        log(`あなた はマス${pos}のカードを交換し、追加でカードを1枚引きました。（元のカードは捨て札へ）`);
+        drawCards(0, 1);
+        renderBoard();
+        startLapChallengePhase(pos, 0);
+    }
+
+    function skipSwapAction() {
+        if (state.turn !== 0 || state.phase !== 'own_cell_swap') return;
+        log(`あなた は何もしないでターンを終了しました。`);
+        state.selectedCardIndex = -1;
+        startLapChallengePhase(state.players[0].pos, 0);
+    }
+
+    // 「〇の倍数ターンに〇枚引く」設定に基づき、そのプレイヤーの手番開始時に無条件でドローを行う
+    function applyTurnStartDraw(pId) {
+        const p = state.players[pId];
+        p.turnsTaken = (p.turnsTaken || 0) + 1;
+        if (state.turnDrawEveryN > 0 && state.turnDrawCount > 0 && p.turnsTaken % state.turnDrawEveryN === 0) {
+            const drawn = drawCards(pId, state.turnDrawCount);
+            if (drawn > 0) log(`${p.name} はターン開始時のルールでカードを ${drawn} 枚引きました。（${p.turnsTaken}ターン目）`);
+        }
+    }
+
+    function endTurn() {
+        state.turn = (state.turn + 1) % state.players.length;
+        state.phase = 'move';
+        applyTurnStartDraw(state.turn);
+        updateUI();
+        if (state.turn !== 0) {
+            const myEpoch = gameEpoch;
+            const nextPid = state.turn;
+            setTimeout(() => { if (myEpoch === gameEpoch) cpuTurn(nextPid); }, 800);
+        }
+    }
+
+    // 「同じマス着地イベント」の中で既に対戦したペアを記録し、同一プレイヤー同士の再戦を防ぐためのキー生成
+    function lapPairKey(a, b) {
+        return a < b ? `${a}-${b}` : `${b}-${a}`;
+    }
+
+    // 着地後の通常対応（設置・交換・マス争奪バトル）が完了した後に呼ぶ。
+    // 同じマスにいる他プレイヤーとの「周回逆転バトル/蹴落としバトル」の権利を、着地したプレイヤーを起点に手番順で並べてキュー化する。
+    function startLapChallengePhase(pos, moverPid) {
+        if (pos === null || moverPid === null) { endTurn(); return; }
+        const n = state.players.length;
+        state.lapQueue = [];
+        for (let i = 0; i < n; i++) {
+            const pid = (moverPid + i) % n;
+            if (state.players[pid].pos === pos) state.lapQueue.push(pid);
+        }
+        state.lapChallengePos = pos;
+        state.lapChallengeMoverPid = moverPid;
+        state.lapBattledPairs = new Set(); // 今回の着地イベントで対戦済みのペアをリセット
+        processNextLapChallenge();
+    }
+
+    // キューから次の候補者を取り出し、攻撃対象がいるなら攻撃するかどうかの判断
+    // （プレイヤーならUI、CPUなら自動）をさせる。いなければ次へ進み、キューが尽きたらターン終了。
+    // 対象は「自分より周回数が多いプレイヤー(周回逆転バトル)」＋「このマスに実際に移動してきたターンプレイヤー本人に限り、
+    // 自分と周回数が同じプレイヤー(蹴落としバトル)」。周回数が自分より少ない相手は対象にならない。
+    // また、今回の着地イベント中に既に対戦したペアは、周回の増減で条件を再び満たしても対象から除外する（同一カード同士の再戦防止）。
+    function processNextLapChallenge() {
+        if (!state.lapQueue || state.lapQueue.length === 0) {
+            endTurn();
+            return;
+        }
+        const pid = state.lapQueue.shift();
+        const pos = state.lapChallengePos;
+        const challenger = state.players[pid];
+        if (!challenger || challenger.pos !== pos) { processNextLapChallenge(); return; }
+
+        // 着地したプレイヤー(ムーバー)は、このマスにいる誰でも対象にできる。
+        // それ以外の「元々このマスにいたプレイヤー」は、ムーバー以外（元々いた者同士）を対象にはできない。
+        // 第三者(ムーバー)が止まったことで、元々いた者同士のバトル機会が発生することはない。
+        const isMover = (pid === state.lapChallengeMoverPid);
+        const notAlreadyBattled = p => !state.lapBattledPairs.has(lapPairKey(pid, p.id));
+        const eligiblePos = p => p.id !== pid && p.pos === pos && notAlreadyBattled(p) &&
+            (isMover || p.id === state.lapChallengeMoverPid);
+        const higherTargets = state.players.filter(p => eligiblePos(p) && p.laps > challenger.laps);
+        const equalTargets = isMover
+            ? state.players.filter(p => eligiblePos(p) && p.laps === challenger.laps)
+            : [];
+        const targets = [...higherTargets, ...equalTargets];
+        if (targets.length === 0 || challenger.hand.length === 0) {
+            processNextLapChallenge();
+            return;
+        }
+
+        if (pid === 0) {
+            showLapChallengePrompt(challenger, targets);
+        } else {
+            cpuDecideLapChallenge(challenger, targets);
+        }
+    }
+
+    function showLapChallengePrompt(challenger, targets) {
+        const container = document.getElementById('lap-challenge-targets');
+        container.innerHTML = '';
+        targets.forEach(t => {
+            const isKickdown = t.laps === challenger.laps;
+            const btn = document.createElement('button');
+            btn.className = isKickdown
+                ? "w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg text-sm font-bold shadow transition cursor-pointer"
+                : "w-full bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg text-sm font-bold shadow transition cursor-pointer";
+            btn.textContent = isKickdown
+                ? `${t.name} を蹴落とす（周回${t.laps} 同数 vs あなた${challenger.laps}）`
+                : `${t.name} を攻撃する（周回${t.laps} vs あなた${challenger.laps}）`;
+            btn.onclick = () => startLapChallengeBattle(challenger.id, t.id);
+            container.appendChild(btn);
+        });
+        document.getElementById('lap-challenge-return-overlay').classList.add('hidden');
+        document.getElementById('lap-challenge-modal').classList.add('active');
+    }
+
+    function skipLapChallenge() {
+        document.getElementById('lap-challenge-modal').classList.remove('active');
+        processNextLapChallenge();
+    }
+
+    function startLapChallengeBattle(attackerId, defenderId) {
+        document.getElementById('lap-challenge-modal').classList.remove('active');
+        const attacker = state.players[attackerId];
+        const defender = state.players[defenderId];
+        const battleType = defender.laps === attacker.laps ? 'kickdown' : 'lap';
+        log(battleType === 'kickdown'
+            ? `${attacker.name} が ${defender.name} に蹴落としバトルを仕掛けました！（周回 ${attacker.laps} 同数）`
+            : `${attacker.name} が ${defender.name} に周回逆転バトルを仕掛けました！（周回 ${attacker.laps} vs ${defender.laps}）`);
+        state.battle = {
+            type: battleType, attacker: attackerId, defender: defenderId, cellIndex: null,
+            defBaseCard: null, atkBaseCard: null, defExtraCard: null, defExtraCards: [],
+            atkBoosts: 0, defBoosts: 0, currentBoostTurn: null, boostRounds: 0,
+            usedCards: [], subPhase: 'atk_set_prompt', isOpen: false, actionMsg: '',
+            selectedCardIndices: []
+        };
+        state.phase = 'battle';
+        state.selectedCardIndex = -1;
+        document.getElementById('battle-modal').classList.add('active');
+        updateBattleModal();
+    }
+
+    // CPUが周回逆転バトルを仕掛けるかどうか、誰を狙うかを決める
+    // CPUが周回逆転バトルを仕掛けるかどうか、誰を・本気で（勝つ気で）か、はったりかを決める。
+    // 重要な判断材料: (1)相手がトップか (2)相手のあがりが近いか (3)自分の手札に余裕があるか (4)相手の手札が少ないか(1枚/0枚は特に狙い目)
+    function cpuDecideLapChallenge(challenger, targets) {
+        const myEpoch = gameEpoch;
+        const maxLaps = Math.max(...state.players.map(p => p.laps));
+
+        // トッププレイヤーが優勝にどれだけ迫っているか（緊急度）。恨み度の重みや遠慮の判断に使う
+        const lapsToWin = state.targetLaps - maxLaps;
+        // 3周以上の余裕があれば通常通り恨みを重視、優勝間際(0周)ではほぼ無視して結託を優先する
+        const grudgeWeight = Math.max(0, Math.min(1, lapsToWin / 3));
+
+        // 対象ごとに「狙う価値」をスコアリングして最も旨味のある相手を選ぶ
+        // 周回逆転バトル(相手周回>自分)は入れ替えで大きく得をし、蹴落としバトル(同周回)は相手を-1するだけなので価値が低め
+        const scored = targets.map(t => {
+            const battleType = t.laps === challenger.laps ? 'kickdown' : 'lap';
+            const benefit = battleType === 'lap' ? (t.laps - challenger.laps) : 1;
+            let score = benefit * 2;
+            if (t.laps === maxLaps) score += 3;                              // トップを叩く価値
+            if (state.targetLaps - t.laps <= 2) score += 4;                  // あがりが近い危険な相手
+            if (t.hand.length === 0) score += 5;                             // ノーガード、最大のチャンス
+            else if (t.hand.length === 1) score += 3;
+            else if (t.hand.length <= 3) score += 1;
+            // 過去にこの相手にやられた恨みがあれば少し優先する。ただしリーダーの優勝が近いほど個人的な恨みは薄れる
+            score += Math.min(3, (challenger.grudge && challenger.grudge[t.id]) || 0) * grudgeWeight;
+            return { t, score, battleType };
+        }).sort((a, b) => b.score - a.score);
+
+        const { t: target, score, battleType } = scored[0];
+        const bestIdx = findMaxCardIndex(challenger.hand);
+        const bestVal = challenger.hand[bestIdx].value;
+
+        // 自分の手札に余裕があるほど積極的になれる。攻撃後に0枚/1枚になる場合は段階的にためらう
+        const marginFactor = challenger.hand.length >= 6 ? 1.2
+            : challenger.hand.length >= 4 ? 1.0
+            : challenger.hand.length === 3 ? 0.75  // 攻撃後に残り2枚
+            : challenger.hand.length === 2 ? 0.5   // 攻撃後に残り1枚：多少ためらう
+            : 0.25;                                 // 攻撃後に残り0枚：大きくためらう
+        const targetFactor = target.hand.length === 0 ? 1.6 : target.hand.length === 1 ? 1.35 : target.hand.length >= 6 ? 0.7 : 1.0;
+        const willBase = bestVal >= 9 ? 0.55 : bestVal >= 6 ? 0.35 : 0.15;
+        // 蹴落としバトルは得られるものが小さいので、多少慎重になる
+        const typeFactor = battleType === 'kickdown' ? 0.8 : 1.0;
+        let winAttemptProb = Math.min(0.9, willBase * marginFactor * targetFactor * typeFactor * (1 + score * 0.05));
+
+        // 直接勝てそうになくても、危険な相手（トップ/あがり間近）にははったりで手札消費を誘いに行く
+        // ただし、はったり自体が手札を失うだけの行為なので、残り枚数が少ないほど仕掛けにくくする
+        let bluffProb = challenger.hand.length <= 1 ? 0
+            : challenger.hand.length === 2 ? 0.12
+            : (score >= 5 ? 0.35 : 0.1);
+
+        // フリーライド回避: 同じマスに、自分より手札に余裕がありこの相手を狙えそうな味方(まだ判断前)がいるなら、
+        // 先に行かせて自分は様子見する（ただしリーダーの優勝が目前の緊急時は遠慮しない）
+        if (lapsToWin > 1) {
+            const betterAllyWaiting = state.lapQueue.some(otherId => {
+                const other = state.players[otherId];
+                return other && other.pos === challenger.pos &&
+                    other.hand.length > challenger.hand.length &&
+                    other.laps < target.laps;
+            });
+            if (betterAllyWaiting) {
+                winAttemptProb *= 0.5;
+                bluffProb *= 0.5;
+            }
+        }
+
+        let willAttack = false;
+        let isBluffAttack = false;
+        if (Math.random() < winAttemptProb) {
+            willAttack = true;
+        } else if (Math.random() < bluffProb) {
+            willAttack = true;
+            isBluffAttack = true;
+        }
+
+        if (willAttack) {
+            setTimeout(() => {
+                if (myEpoch !== gameEpoch) return; // リセット済みなら何もしない
+                log(battleType === 'kickdown'
+                    ? `${challenger.name} が ${target.name} に蹴落としバトルを仕掛けました！（周回 ${challenger.laps} 同数）`
+                    : `${challenger.name} が ${target.name} に周回逆転バトルを仕掛けました！（周回 ${challenger.laps} vs ${target.laps}）`);
+                state.battle = {
+                    type: battleType, attacker: challenger.id, defender: target.id, cellIndex: null,
+                    defBaseCard: null, atkBaseCard: null, defExtraCard: null, defExtraCards: [],
+                    atkBoosts: 0, defBoosts: 0, currentBoostTurn: null, boostRounds: 0,
+                    usedCards: [], subPhase: 'atk_set_prompt', isOpen: false, actionMsg: '',
+                    selectedCardIndices: [], isBluff: isBluffAttack
+                };
+                state.phase = 'battle';
+                state.selectedCardIndex = -1;
+                document.getElementById('battle-modal').classList.add('active');
+
+                // はったりなら最弱カード、本気なら最強カードを伏せて出す
+                let atkIdx;
+                if (isBluffAttack) {
+                    atkIdx = 0;
+                    for (let i = 1; i < challenger.hand.length; i++) {
+                        if (challenger.hand[i].value < challenger.hand[atkIdx].value) atkIdx = i;
+                    }
+                } else {
+                    atkIdx = findMaxCardIndex(challenger.hand);
+                }
+                const card = challenger.hand.splice(atkIdx, 1)[0];
+                state.battle.atkBaseCard = card;
+                state.battle.usedCards.push({ card: card, owner: challenger.id });
+                playSE('card');
+                if (state.battle.defender === 0) {
+                    state.battle.actionMsg = `あなたが防御カードを追加するか選択してください。`;
+                    state.battle.subPhase = 'def_set_prompt';
+                } else {
+                    cpuCommitDefense(state.battle);
+                    state.battle.isOpen = true;
+                    determineBoostTurnForModal();
+                }
+                updateBattleModal();
+            }, 400);
+        } else {
+            log(`${challenger.name} は様子を見て、周回逆転バトルを仕掛けませんでした。`);
+            processNextLapChallenge();
+        }
+    }
+
+    // 独走（2位に大きく差をつけている、またはあがりに近い）プレイヤーを探す。いなければnull
+    function findRunawayLeader(excludePid) {
+        const sorted = [...state.players].sort((a, b) => b.laps - a.laps);
+        const leader = sorted[0];
+        if (!leader || leader.id === excludePid || leader.laps <= 0) return null;
+        const second = sorted.find(p => p.id !== leader.id);
+        const isFarAhead = second ? (leader.laps - second.laps) >= 2 : leader.laps >= 2;
+        const isCloseToWin = (state.targetLaps - leader.laps) <= 2;
+        return (isFarAhead || isCloseToWin) ? leader : null;
+    }
+
+    async function cpuTurn(pId) {
+        log(`--- ${state.players[pId].name} のターン ---`);
+        const cpu = state.players[pId];
+        if (cpu.hand.length === 0) drawCards(pId, 1);
+
+        // 自分の手番が回ってくるたびに、蓄積した恨み度を少しずつ和らげる
+        if (cpu.grudge) {
+            for (const key in cpu.grudge) {
+                cpu.grudge[key] *= 0.7;
+                if (cpu.grudge[key] < 0.3) delete cpu.grudge[key];
+            }
+        }
+
+        let chosenIdx = -1;
+        let isWinMove = false;
+        let isChaseMove = false;
+
+        // 終盤の逃げ切り: この移動でGOを通過すれば優勝が確定する場合のみ、カード移動を検討する
+        const isFinalLap = (cpu.laps + 1) >= state.targetLaps;
+        if (isFinalLap && cpu.hand.length > 0) {
+            const distToGo = (BOARD_SIZE - cpu.pos) % BOARD_SIZE || BOARD_SIZE;
+            if (distToGo >= 3) {
+                // ダイス(2〜12)では届かない可能性があるため、確実に届くカードがあれば必ず使う
+                let bestIdx = -1;
+                let bestVal = Infinity;
+                cpu.hand.forEach((c, idx) => {
+                    if (c.value >= distToGo && c.value < bestVal) {
+                        bestVal = c.value;
+                        bestIdx = idx;
+                    }
+                });
+                if (bestIdx !== -1) { chosenIdx = bestIdx; isWinMove = true; }
+            }
+            // distToGoが1〜2の場合はダイス(最小2)でも確実に届くため、カードは使わない
+        }
+
+        // 独走しているプレイヤーがいれば、周回逆転バトルを仕掛けるために、
+        // ピッタリ止まれるカードがある場合に限りカード移動で追いつく
+        if (chosenIdx === -1) {
+            const leader = findRunawayLeader(pId);
+            if (leader) {
+                const distToLeader = (leader.pos - cpu.pos + BOARD_SIZE) % BOARD_SIZE;
+                if (distToLeader > 0) {
+                    const idx = cpu.hand.findIndex(c => c.value === distToLeader);
+                    // 追跡は勝利確定の一手ではないため、手札が0枚/1枚になる場合は段階的にためらう
+                    const remainAfter = cpu.hand.length - 1;
+                    const chaseChance = handConservationFactor(remainAfter);
+                    if (idx !== -1 && Math.random() < chaseChance) { chosenIdx = idx; isChaseMove = true; }
+                }
+            }
+        }
+
+        if (chosenIdx !== -1) {
+            let card = cpu.hand.splice(chosenIdx, 1)[0];
+            addToDiscard(card, pId);
+            if (isWinMove) {
+                log(`${cpu.name} は勝利を決めるカード [${card.suit}${card.displayValue}] で ${card.value} マス進みます！`);
+            } else if (isChaseMove) {
+                log(`${cpu.name} は独走するプレイヤーを追ってカード [${card.suit}${card.displayValue}] で ${card.value} マス進みます！`);
+            } else {
+                log(`${cpu.name} はカード [${card.suit}${card.displayValue}] で ${card.value} マス進みます。`);
+            }
+            await movePlayer(pId, card.value);
+        } else {
+            // 通常はダイスで盤面を巡り、マスの占有を増やす（カードは戦闘・逃げ切り用に温存）
+            let d1 = Math.floor(Math.random() * 6) + 1;
+            let d2 = Math.floor(Math.random() * 6) + 1;
+            let total = d1 + d2;
+            playSE('dice');
+            showDiceRoll(d1, d2);
+            log(`${cpu.name} はダイスを振り ${total} マス進みます。`);
+            await movePlayer(pId, total);
+        }
+    }
+
+    // 指定マスが「次の1手で他プレイヤーに攻撃される危険度」を大まかに見積もる
+    // (2個のダイス合計は5〜9が特に出やすく、1〜2マスは通過済みで当面安全、13以上は今ターンでは届かない)
+    function estimateCellRisk(cellPos) {
+        let maxRisk = 0.1;
+        state.players.forEach(pl => {
+            let dist = (cellPos - pl.pos + BOARD_SIZE) % BOARD_SIZE;
+            if (dist === 0) return; // 自分自身がいるマス（通常想定しない）
+            let risk;
+            if (dist <= 2) risk = 0.05;            // 直後：この周ではまず狙われない
+            else if (dist >= 5 && dist <= 9) risk = 1.0;  // ダイスの主要ゾーン：最も狙われやすい
+            else if (dist <= 12) risk = 0.5;       // ダイス次第で届く
+            else risk = 0.1;                        // 今ターンのダイスでは届きにくい
+            maxRisk = Math.max(maxRisk, risk);
+        });
+        return maxRisk;
+    }
+
+    function cpuPlaceCardTurn(pId) {
+        const cpu = state.players[pId];
+        if (cpu.hand.length > 0) {
+            const risk = estimateCellRisk(cpu.pos);
+            let idx;
+            if (risk >= 0.8) {
+                // 危険なマス：強いカードで守りを固める
+                idx = findMaxCardIndex(cpu.hand);
+            } else if (risk <= 0.2) {
+                // 安全そうなマス：狙われない賭けに弱いカードを置き、強いカードは温存する
+                idx = 0;
+                for (let i = 1; i < cpu.hand.length; i++) {
+                    if (cpu.hand[i].value < cpu.hand[idx].value) idx = i;
+                }
+            } else {
+                // 中程度のリスク：手札の中央値くらいのカードを選ぶ
+                const sorted = cpu.hand.map((c, i) => ({ c, i })).sort((a, b) => a.c.value - b.c.value);
+                idx = sorted[Math.floor(sorted.length / 2)].i;
+            }
+            const card = cpu.hand.splice(idx, 1)[0];
+            state.board[cpu.pos] = { player: pId, card: card, revealed: false };
+            log(`${cpu.name} がマス${cpu.pos}にカードを設置しました。`);
+        }
+        renderBoard();
+        startLapChallengePhase(cpu.pos, pId);
+    }
+
+    function cpuSwapTurn(pId) {
+        const cpu = state.players[pId];
+        const pos = cpu.pos;
+        const currentCard = state.board[pos].card;
+        
+        const maxIdx = findMaxCardIndex(cpu.hand);
+        const bestHandIdx = (maxIdx !== -1 && cpu.hand[maxIdx].value > currentCard.value) ? maxIdx : -1;
+
+        if (bestHandIdx !== -1) {
+            const newCard = cpu.hand.splice(bestHandIdx, 1)[0];
+            const oldCard = state.board[pos].card;
+            state.board[pos].card = newCard;
+            state.board[pos].revealed = false; // 新しく置いたカードは未公開の裏向き状態に戻す
+            addToDiscard(oldCard, pId);
+            log(`${cpu.name} はマス${pos}のカードを交換し、追加でカードを1枚引きました。`);
+            drawCards(pId, 1);
+        } else {
+            log(`${cpu.name} はカードを交換しませんでした。`);
+        }
+        renderBoard();
+        startLapChallengePhase(pos, pId);
+    }
+
+    function triggerGameOver(winnerId) {
+        playSE('win');
+        document.getElementById('game-over-title').textContent = winnerId === 0 ? "🎉 VICTORY! 🎉" : "GAME OVER";
+        document.getElementById('game-over-desc').textContent = `${state.players[winnerId].name} が ${state.targetLaps}周を達成して勝利しました！`;
+        document.getElementById('game-over-modal').classList.add('active');
+    }
+
+    function openRulesModal() { document.getElementById('rules-modal').classList.add('active'); }
+    function closeRulesModal() { document.getElementById('rules-modal').classList.remove('active'); }
+    
+    function openSettingsModal() { document.getElementById('settings-modal').classList.add('active'); }
+    function closeSettingsModal() { document.getElementById('settings-modal').classList.remove('active'); }
+    
+    function applySettings() {
+        closeSettingsModal();
+        initGame();
+    }
+    
+    function openDiscardModal() {
+        const select = document.getElementById('discard-player-select');
+        if (state.useIndividualDecks) {
+            select.classList.remove('hidden');
+            select.innerHTML = '<option value="all">全員の捨て札</option>';
+            state.players.forEach(p => {
+                select.innerHTML += `<option value="${p.id}">${p.name} の捨て札</option>`;
+            });
+            select.value = "all";
+        } else {
+            select.classList.add('hidden');
+        }
+        
+        document.getElementById('discard-total-count').textContent = getTotalDiscardCount();
+        renderDiscardList();
+        document.getElementById('discard-modal').classList.add('active');
+    }
+    
+    function renderDiscardList() {
+        const container = document.getElementById('discard-list-container');
+        container.innerHTML = '';
+        
+        const selectValue = document.getElementById('discard-player-select') ? document.getElementById('discard-player-select').value : "all";
+        
+        let pilesToRender = [];
+        
+        if (!state.useIndividualDecks) {
+            pilesToRender = [{ title: "共通の捨て札", cards: state.discardPile }];
+        } else {
+            if (selectValue === "all") {
+                state.players.forEach(p => {
+                    if (p.discardPile.length > 0) {
+                        pilesToRender.push({ title: `${p.name} の捨て札`, cards: p.discardPile });
+                    }
+                });
+                if (pilesToRender.length === 0) pilesToRender = [{ title: "捨て札はありません", cards: [] }];
+            } else {
+                const pId = parseInt(selectValue);
+                if (!isNaN(pId) && state.players[pId]) {
+                    const p = state.players[pId];
+                    pilesToRender = [{ title: `${p.name} の捨て札`, cards: p.discardPile }];
+                }
+            }
+        }
+        
+        pilesToRender.forEach(pile => {
+            let titleEl = document.createElement('h4');
+            titleEl.className = "text-sm font-bold text-gray-700 mb-1 mt-2 border-l-4 border-gray-400 pl-2";
+            titleEl.textContent = pile.title + ` (${pile.cards.length}枚)`;
+            container.appendChild(titleEl);
+            
+            let grid = document.createElement('div');
+            grid.className = "grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2 p-1 mb-3";
+            
+            pile.cards.forEach(c => {
+                let item = document.createElement('div');
+                item.className = "border rounded p-1.5 text-center bg-gray-50 text-xs font-bold shadow-sm flex justify-center items-center h-10";
+                item.innerHTML = `<span class="${SUIT_CLASSES[c.suit]}">${c.suit}${c.displayValue}</span>`;
+                grid.appendChild(item);
+            });
+            
+            if (pile.cards.length === 0) {
+                grid.innerHTML = '<div class="text-xs text-gray-400 col-span-3 p-2">（空です）</div>';
+            }
+            
+            container.appendChild(grid);
+        });
+    }
+
+    function closeDiscardModal() { document.getElementById('discard-modal').classList.remove('active'); }
+
+    function hideBattleModalForBoard() {
+        if (!state.battle) return;
+        document.getElementById('battle-modal').classList.remove('active');
+        document.getElementById('battle-return-overlay').classList.remove('hidden');
+    }
+
+    function showBattleModalFromBoard() {
+        document.getElementById('battle-return-overlay').classList.add('hidden');
+        document.getElementById('battle-modal').classList.add('active');
+    }
+
+    function hideLapChallengeModalForBoard() {
+        document.getElementById('lap-challenge-modal').classList.remove('active');
+        document.getElementById('lap-challenge-return-overlay').classList.remove('hidden');
+    }
+
+    function showLapChallengeModalFromBoard() {
+        document.getElementById('lap-challenge-return-overlay').classList.add('hidden');
+        document.getElementById('lap-challenge-modal').classList.add('active');
+    }
+
+    window.onload = initGame;
+</script>
+</body>
+</html>
