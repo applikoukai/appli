@@ -111,6 +111,20 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
 
+        /* 自分が置いたカードのうち、まだ他プレイヤーには見えていない(非公開)ことを示す小さなバッジ */
+        .hidden-card-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 12px;
+            height: 12px;
+            background-size: 5px 5px;
+            border-width: 1px;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            z-index: 5;
+        }
+
         .suit-hearts, .suit-diamonds { color: #ef4444; }
         .suit-clubs, .suit-spades { color: #1f2937; }
         
@@ -360,6 +374,18 @@
                     </div>
                     <div id="dice-total-badge" class="bg-gray-900/85 text-white font-black text-sm sm:text-base px-3 py-1 rounded-full shadow-lg"></div>
                 </div>
+
+                <!-- バトル/直接攻撃 復帰用オーバーレイ（盤面中央＝ダイス表示と同じ位置） -->
+                <div id="battle-return-overlay" class="hidden absolute inset-0 z-30 flex items-center justify-center cursor-pointer pointer-events-auto" onclick="showBattleModalFromBoard()">
+                    <div class="bg-red-600/90 text-white font-black py-3 px-6 rounded-full shadow-[0_0_20px_rgba(220,38,38,0.8)] border-2 border-white text-sm sm:text-base flex items-center gap-2 animate-pulse hover:bg-red-500 transition text-center scale-[0.7]">
+                        ⚔️ タップしてバトルに戻る
+                    </div>
+                </div>
+                <div id="lap-challenge-return-overlay" class="hidden absolute inset-0 z-30 flex items-center justify-center cursor-pointer pointer-events-auto" onclick="showLapChallengeModalFromBoard()">
+                    <div class="bg-amber-500/90 text-white font-black py-3 px-6 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.8)] border-2 border-white text-sm sm:text-base flex items-center gap-2 animate-pulse hover:bg-amber-400 transition text-center scale-[0.7]">
+                        🔄 タップして選択画面に戻る
+                    </div>
+                </div>
             </div>
 
             <!-- ログエリア (下に隠れるように高さを調整) -->
@@ -398,15 +424,16 @@
 <!-- ================== モーダル群 ================== -->
 <!-- 設定モーダル -->
 <div id="settings-modal" class="modal">
-    <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 flex flex-col space-y-4 border-t-4 border-gray-600">
-        <h3 class="font-bold text-xl text-gray-800 border-b pb-2">⚙️ ゲーム設定</h3>
-        <div class="space-y-3">
+    <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 flex flex-col border-t-4 border-gray-600 max-h-[85vh]">
+        <h3 class="font-bold text-xl text-gray-800 border-b pb-2 flex-shrink-0">⚙️ ゲーム設定</h3>
+        <div class="space-y-3 overflow-y-auto custom-scrollbar flex-1 py-3 pr-1 -mr-1">
             <div class="flex justify-between items-center text-sm font-bold text-gray-700">
                 <span>盤面の広さ:</span>
                 <select id="setting-board-size" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
                     <option value="9">9マス</option>
                     <option value="12">12マス</option>
                     <option value="13" selected>13マス (標準)</option>
+                    <option value="14">14マス</option>
                     <option value="16">16マス</option>
                 </select>
             </div>
@@ -439,6 +466,19 @@
                 </select>
             </div>
             <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>初期手札枚数:</span>
+                <select id="setting-initial-hand" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="3">3枚</option>
+                    <option value="4">4枚</option>
+                    <option value="5" selected>5枚 (標準)</option>
+                    <option value="6">6枚</option>
+                    <option value="7">7枚</option>
+                    <option value="8">8枚</option>
+                    <option value="9">9枚</option>
+                    <option value="10">10枚</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
                 <span>最大手札枚数:</span>
                 <select id="setting-max-hand" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
                     <option value="5">5枚</option>
@@ -459,8 +499,51 @@
                     <option value="false">OFF (共通山札)</option>
                 </select>
             </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>周回ごとの引き枚数:</span>
+                <select id="setting-lap-draw" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="0">0枚</option>
+                    <option value="1" selected>1枚 (標準)</option>
+                    <option value="2">2枚</option>
+                    <option value="3">3枚</option>
+                    <option value="4">4枚</option>
+                    <option value="5">5枚</option>
+                </select>
+            </div>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>手ぶらボーナス:</span>
+                <select id="setting-empty-hand-bonus" class="border-2 rounded px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500">
+                    <option value="0">0枚</option>
+                    <option value="1">1枚</option>
+                    <option value="2" selected>2枚 (標準)</option>
+                    <option value="3">3枚</option>
+                    <option value="4">4枚</option>
+                    <option value="5">5枚</option>
+                </select>
+            </div>
+            <p class="text-[10px] text-gray-500 -mt-2 leading-snug">※ 手ぶらボーナスは、GOマス到達の瞬間に手札が0枚だった場合のみ、周回ごとの引き枚数に加えて追加でドローできる枚数です。結果的に「手ぶらボーナス＋周回ごとの引き枚数」の手札になります（標準設定では 2+1=3枚）。</p>
+            <div class="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>無条件のターン定期ドロー:</span>
+                <div class="flex items-center gap-1">
+                    <select id="setting-turn-draw-n" class="border-2 rounded px-1.5 py-1.5 bg-gray-50 outline-none focus:border-blue-500 text-xs">
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                    </select>
+                    <span class="text-xs">の倍数ターンに</span>
+                    <select id="setting-turn-draw-count" class="border-2 rounded px-1.5 py-1.5 bg-gray-50 outline-none focus:border-blue-500 text-xs">
+                        <option value="0" selected>0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+                    <span class="text-xs">枚</span>
+                </div>
+            </div>
         </div>
-        <div class="pt-2">
+        <div class="pt-2 flex-shrink-0">
             <button onclick="applySettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-bold shadow transition cursor-pointer mb-2">設定を適用してリセット</button>
             <button onclick="closeSettingsModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold transition cursor-pointer">キャンセル</button>
         </div>
@@ -547,13 +630,18 @@
     </div>
 </div>
 
-<!-- 周回逆転バトル 対象選択モーダル -->
-<div id="lap-challenge-modal" class="modal">
+<!-- 周回逆転バトル/蹴落としバトル 対象選択モーダル -->
+<div id="lap-challenge-modal" class="modal" onclick="if(event.target === this) hideLapChallengeModalForBoard()">
     <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 flex flex-col border-4 border-amber-500">
-        <h3 class="text-lg sm:text-xl font-black text-amber-700 mb-2 border-b pb-2 flex items-center gap-1.5">
-            🔄 周回逆転バトル
-        </h3>
-        <p class="text-sm text-gray-700 mb-3">同じマスに、あなたより周回数の多いプレイヤーがいます。攻撃を仕掛けますか？</p>
+        <div class="flex justify-between items-center border-b pb-2 mb-2">
+            <h3 class="text-lg sm:text-xl font-black text-amber-700 flex items-center gap-1.5 m-0">
+                🔄 直接攻撃の機会
+            </h3>
+            <button onclick="hideLapChallengeModalForBoard()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-1 px-2.5 rounded shadow transition cursor-pointer flex items-center gap-1 border border-gray-300 whitespace-nowrap">
+                👀 盤面を見る
+            </button>
+        </div>
+        <p class="text-sm text-gray-700 mb-3">同じマスのプレイヤーに直接攻撃を仕掛けられます。</p>
         <div id="lap-challenge-targets" class="flex flex-col gap-2 mb-3"></div>
         <button onclick="skipLapChallenge()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded-lg text-sm font-bold transition cursor-pointer">見送る</button>
     </div>
@@ -597,32 +685,33 @@
                 <p>・<strong>カード移動:</strong> 手札のカードを選んで使用すると、記載されている数（A=1 〜 K=13）の分だけ正確に進むことができます。</p>
             </div>
             <div>
-                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-green-500 pl-2">🃏 カードを引くルール</h4>
+                <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-green-500 pl-2">🃏 カードを引く</h4>
                 <p>・<strong>自分のマス:</strong> 自分の所有するマスを通過、または丁度止まった時にカードを1枚引きます。</p>
-                <p>・<strong>GOマス (スタート):</strong> 周回してGOマスに到達または通過した際、1枚引きます。引いて手札が1枚になったならさらに2枚引きます（0枚のときは3枚に、1枚以上のときは+1枚になる）。</p>
-                <p>・<strong>カード交換:</strong> 自分のマスに丁度止まるとカード交換が行えます。カード交換を行うと、元々置かれていたカードは捨て札になり、追加で1枚引くことができます。</p>
+                <p>・<strong>GOマス (スタート):</strong> 周回してGOマスに到達または通過した際、設定した枚数（標準1枚）を引きます。到達の瞬間に手札が0枚(手ぶら)だった場合は、手ぶらボーナス（標準2枚）を追加で引き、結果的に「手ぶらボーナス＋周回ごとの引き枚数」枚になります。</p>
+                <p>・<strong>ターン定期ドロー:</strong> 設定で「〇の倍数ターンに〇枚引く」を有効にすると、そのプレイヤーの該当ターン開始時に無条件でカードを引きます（標準ではOFF）。</p>
+                <p>・<strong>カード交換:</strong> 自分のマスに丁度止まると手札からカード交換が行えます。カード交換を行うと、元々置かれていたカードは捨て札になり、追加で1枚引くことができます。</p>
             </div>
             <div>
                 <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-red-500 pl-2">🏠 マスの所有とバトル</h4>
-                <p>・移動後、空きマスであれば手札のカードを設置して自分のマスにできます。</p>
+                <p>・移動後、空きマスであれば手札のカードを裏向きで置いてして自分のマスにできます。</p>
                 <p>・他人のマスに止まるとバトルを仕掛けることができます。<br>
                    【バトルの流れ】<br>
                    ① 攻撃側: 手札からカードを1枚裏向きで出す。<br>
                    ② 防御側: 手札から任意でカードを1枚出す。<br>
                    ③ 判定: 防御側は「マスに元々あるカード」と「追加したカード」の合計値。攻撃側は出したカードの数値。<br>
-                   ④ ブースト: バトルで負けている側（同数の場合は攻撃側）が、手札を捨てることで1枚につき数値を+1できます。逆転すると相手に選択権が移ります。これを繰り返して劣勢側がパスをするとそこで決着します。<br>
-                   最終的に合計数値が上回った方（同数の場合は防御側）がマスの持ち主になります。
+                   ④ ブースト: バトルで負けている側（同数の場合は攻撃側）が、手札を捨てることで1枚につき数値を+1できます。逆転すると相手に選択権が移ります。これを繰り返して劣勢側がパスをするとそこで決着し、勝者がマスの持ち主になります。<br>
+                   攻撃側が勝った場合、最初に出したカードがそのマスに置かれます。
                 </p>
             </div>
             <div>
                 <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-amber-500 pl-2">🔄 周回逆転バトル</h4>
                 <p>・他のプレイヤーと同じマスに止まると、マスへの通常対応（設置・交換・マス争奪バトル）を終えた後に、自分より周回数の多いプレイヤーへ攻撃を仕掛けられます（複数いれば相手を選べます）。</p>
-                <p>・同じマスに複数プレイヤーがいる場合、着地したプレイヤーがまず判断し、その後は手番順に他の該当プレイヤーにも判断の機会が回ります（実際の手番は消費されません）。</p>
-                <p>・攻撃側は伏せカードを1枚、防御側は手札から好きな枚数のカードを出して合計値を比較し、通常のバトルと同様のブースト戦を行います。攻撃側が上回って決着すると、両者の周回数が入れ替わります。</p>
+                <p>・同じマスに複数プレイヤーがいる場合、止まったプレイヤーがまず判断し、その後は手番順に他の該当プレイヤーにも判断の機会が回ります（実際の手番は消費されません）。</p>
+                <p>・攻撃側は伏せカードを1枚、防御側は手札から好きな枚数のカードを出して合計値を比較し、通常のバトルと同様のブースト戦を行います。攻撃側が勝つと両者の周回数が入れ替わります。</p>
             </div>
             <div>
                 <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-orange-600 pl-2">⚡ 蹴落としバトル</h4>
-                <p>・そのマスに実際に移動してきたターンプレイヤー本人に限り、自分と周回数が同じ相手にも攻撃を仕掛けられます（同じマスに元からいた他のプレイヤーには、この権利はありません）。周回数が自分より少ない相手には仕掛けられません。</p>
+                <p>・移動して同じマスに止まったプレイヤーは、周回逆転バトルと同じタイミングで自分と周回数が同じ相手にも攻撃を仕掛けられます（同じマスに元からいた他のプレイヤーには、この権利はありません）。</p>
                 <p>・バトルの流れは周回逆転バトルと同じですが、攻撃側が勝利した場合は周回数の入れ替えではなく、相手の周回数が1つ減ります。攻撃側が負けてもペナルティはありません。</p>
             </div>
             <div>
@@ -633,13 +722,6 @@
         <div class="mt-3 sm:mt-4 pt-3 border-t text-right">
             <button onclick="closeRulesModal()" class="bg-blue-600 text-white py-2 px-6 rounded-lg font-bold text-sm cursor-pointer hover:bg-blue-700 transition">閉じる</button>
         </div>
-    </div>
-</div>
-
-<!-- バトル復帰用オーバーレイ -->
-<div id="battle-return-overlay" class="fixed inset-0 z-50 hidden flex items-start justify-center pt-24 cursor-pointer pointer-events-auto" onclick="showBattleModalFromBoard()">
-    <div class="bg-red-600/90 text-white font-black py-3 px-8 rounded-full shadow-[0_0_20px_rgba(220,38,38,0.8)] border-2 border-white text-base sm:text-lg flex items-center gap-2 animate-pulse hover:bg-red-500 transition">
-        ⚔️ 画面をクリックしてバトルに戻る
     </div>
 </div>
 
@@ -725,10 +807,16 @@
     const SUITS = ['♠', '♥', '♦', '♣'];
     const SUIT_CLASSES = { '♠': 'suit-spades', '♥': 'suit-hearts', '♦': 'suit-diamonds', '♣': 'suit-clubs' };
 
+    // ゲーム世代カウンタ。initGame()のたびに増やし、リセット前に予約された
+    // setTimeout/非同期処理(CPUの移動待機や行動遅延など)が、古い世代のまま
+    // 新しいゲームの状態を書き換えてしまうのを防ぐために使う。
+    let gameEpoch = 0;
+
     let state = {
         sharedDeck: [], discardPile: [], targetLaps: 7, maxHandSize: 8, turn: 0, phase: 'move',
         players: [], board: Array(BOARD_SIZE).fill(null), selectedCardIndex: -1,
-        battle: null, useIndividualDecks: true, lapQueue: [], lapChallengePos: null
+        battle: null, useIndividualDecks: true, lapQueue: [], lapChallengePos: null,
+        lapDrawCount: 1, turnDrawEveryN: 1, turnDrawCount: 0, emptyHandBonus: 2, initialHandSize: 5
     };
 
     function addToDiscard(card, playerId) {
@@ -918,10 +1006,27 @@
     }
 
     function initGame() {
+        // 新しいゲーム世代にする。これより前に予約された非同期処理(CPUの移動/行動の遅延実行)は
+        // 世代の不一致を検知して自ら中断するため、リセット後に古い処理が状態を書き換えることはない。
+        gameEpoch++;
+
+        // バトル中や周回逆転バトルの確認中にリセットされた場合に備え、関連モーダル/オーバーレイを強制的に閉じる
+        document.getElementById('battle-modal').classList.remove('active');
+        document.getElementById('battle-return-overlay').classList.add('hidden');
+        document.getElementById('lap-challenge-modal').classList.remove('active');
+        document.getElementById('lap-challenge-return-overlay').classList.add('hidden');
+        const diceOverlay = document.getElementById('dice-overlay');
+        if (diceOverlay) { diceOverlay.classList.add('hidden'); diceOverlay.classList.remove('dice-pop-anim'); }
+
         BOARD_SIZE = parseInt(document.getElementById('setting-board-size').value);
         state.targetLaps = parseInt(document.getElementById('setting-laps').value);
+        state.initialHandSize = parseInt(document.getElementById('setting-initial-hand').value);
         state.maxHandSize = parseInt(document.getElementById('setting-max-hand').value);
         state.useIndividualDecks = document.getElementById('setting-individual-decks').value === 'true';
+        state.lapDrawCount = parseInt(document.getElementById('setting-lap-draw').value);
+        state.emptyHandBonus = parseInt(document.getElementById('setting-empty-hand-bonus').value);
+        state.turnDrawEveryN = parseInt(document.getElementById('setting-turn-draw-n').value);
+        state.turnDrawCount = parseInt(document.getElementById('setting-turn-draw-count').value);
         
         document.querySelectorAll('.target-laps-display').forEach(el => el.textContent = state.targetLaps);
 
@@ -967,8 +1072,9 @@
         document.getElementById('game-over-modal').classList.remove('active');
 
         document.getElementById('log').innerHTML = '';
-        log(`ゲーム開始！ 目標: ${state.targetLaps}周 (最大手札: ${state.maxHandSize}枚)`);
-        for (let i = 0; i < numPlayers; i++) drawCards(i, 5);
+        log(`ゲーム開始！ 目標: ${state.targetLaps}周 (初期手札: ${state.initialHandSize}枚 / 最大手札: ${state.maxHandSize}枚)`);
+        for (let i = 0; i < numPlayers; i++) drawCards(i, state.initialHandSize);
+        applyTurnStartDraw(0); // 最初のプレイヤーの1ターン目としてカウントする
 
         renderBoard();
         updateUI();
@@ -977,20 +1083,74 @@
         setTimeout(handleZoomChange, 100);
     }
 
+    // 正方形の周回パスに沿ってN個のマスを均等な間隔で配置する（円形より隅の空間を無駄にせず、マスを大きく取れる）
+    // margin: パスの中心線が盤面の端からどれだけ内側にあるか（%）
+    // 正方形レイアウトのマスサイズと全マスの座標をまとめて計算する。
+    // 4隅を必ずマスの位置に一致させることで、辺をまたぐ斜めの詰まりを完全に回避しつつ、
+    // どのマス数でも隙間なく最大限詰められるようにする（余りは縦の辺=左右にわずかに多く配分し、少し詰まった見た目にする）。
+    function computeSquareLayout(N) {
+        const interior = Math.max(0, N - 4); // 4隅を除いた、辺の内側に入るマス数
+        const base = Math.floor(interior / 4);
+        const remainder = interior % 4;
+        const sideCounts = [base, base, base, base]; // [上, 右, 下, 左]
+        const order = [1, 3, 0, 2]; // 余りは 右→左→上→下 の順に配分（左右をわずかに優先）
+        for (let s = 0; s < remainder; s++) sideCounts[order[s]] += 1;
+
+        const maxSideCount = Math.max(...sideCounts);
+        const cellPercent = Math.max(6, Math.min(22, 100 / (maxSideCount + 2)));
+        const margin = cellPercent / 2;
+
+        const corners = [
+            { x: margin, y: margin },             // 左上 (GO)
+            { x: 100 - margin, y: margin },       // 右上
+            { x: 100 - margin, y: 100 - margin }, // 右下
+            { x: margin, y: 100 - margin }        // 左下
+        ];
+
+        const positions = [];
+        for (let s = 0; s < 4; s++) {
+            const from = corners[s];
+            const to = corners[(s + 1) % 4];
+            const steps = sideCounts[s] + 1; // このコーナー〜次のコーナーまでの区切り数
+            for (let k = 0; k < steps; k++) {
+                const t = k / steps;
+                positions.push({ left: from.x + (to.x - from.x) * t, top: from.y + (to.y - from.y) * t });
+            }
+        }
+        return { cellPercent, positions };
+    }
+
     function renderBoard() {
         const boardEl = document.getElementById('board');
         boardEl.innerHTML = '';
         
-        let cellPercent = BOARD_SIZE <= 9 ? 22 : (BOARD_SIZE <= 13 ? 18 : 15);
+        // 13マス以下は円形、16マス以上は四角形の周回パスにする
+        // （同じマス数でも四角形の方が盤面四隅の空間を有効活用でき、マスを大きく表示できるため）
+        const useSquareLayout = BOARD_SIZE >= 14;
+        let cellPercent;
+        let squarePositions = null;
+        if (useSquareLayout) {
+            const layout = computeSquareLayout(BOARD_SIZE);
+            cellPercent = layout.cellPercent;
+            squarePositions = layout.positions;
+        } else {
+            cellPercent = BOARD_SIZE <= 9 ? 22 : 18;
+        }
         const radius = 50 - (cellPercent / 2);
 
         for (let i = 0; i < BOARD_SIZE; i++) {
             let cell = document.createElement('div');
             cell.className = `cell cell-${i} ${i === 0 ? 'start-cell' : ''}`;
             
-            const angle = (i / BOARD_SIZE) * 2 * Math.PI - Math.PI / 2;
-            const left = 50 + radius * Math.cos(angle);
-            const top = 50 + radius * Math.sin(angle);
+            let left, top;
+            if (useSquareLayout) {
+                left = squarePositions[i].left;
+                top = squarePositions[i].top;
+            } else {
+                const angle = (i / BOARD_SIZE) * 2 * Math.PI - Math.PI / 2;
+                left = 50 + radius * Math.cos(angle);
+                top = 50 + radius * Math.sin(angle);
+            }
             
             cell.style.left = `${left}%`;
             cell.style.top = `${top}%`;
@@ -1028,7 +1188,13 @@
                 
                 if (owner === 0 || cellData.revealed) {
                     const borderColors = ['border-blue-500', 'border-red-500', 'border-green-500', 'border-purple-500', 'border-orange-500', 'border-teal-500', 'border-pink-500', 'border-gray-500'];
-                    cardWrapper.innerHTML = `<div class="card-placed flex flex-col items-center border-b-[4px] ${borderColors[owner]} rounded bg-white p-1 shadow-md leading-none">
+                    // 自分が置いたカードで、まだ他プレイヤーには公開されていない(revealedでない)場合は、
+                    // 「本当は裏向き＝他人には見えていない」ことを示す小さな裏カードバッジを添える
+                    const hiddenBadge = (owner === 0 && !cellData.revealed)
+                        ? `<div class="hidden-card-badge card-back" title="他のプレイヤーにはまだ見えていません"></div>`
+                        : '';
+                    cardWrapper.innerHTML = `<div class="card-placed relative flex flex-col items-center border-b-[4px] ${borderColors[owner]} rounded bg-white p-1 shadow-md leading-none">
+                        ${hiddenBadge}
                         <span class="${SUIT_CLASSES[cellData.card.suit]} text-base sm:text-lg font-black leading-none">${cellData.card.suit}${cellData.card.displayValue}</span>
                     </div>`;
                 } else {
@@ -1129,6 +1295,7 @@
     }
 
     async function movePlayer(pId, distance) {
+        const myEpoch = gameEpoch; // 呼び出された時点のゲーム世代を記憶しておく
         const p = state.players[pId];
         for (let i = 1; i <= distance; i++) {
             p.pos = (p.pos + 1) % BOARD_SIZE;
@@ -1137,9 +1304,20 @@
                 playSE('win');
                 log(`${p.name} がGOマス到達！周回数: ${p.laps}/${state.targetLaps}`);
                 
-                drawCards(pId, 1);
-                let bonusCount = p.hand.length === 1 ? 2 : 1;
-                drawCards(pId, bonusCount);
+                // 周回達成の瞬間、手札が0枚(手ぶら)だったかを先に判定しておく
+                const wasEmptyHanded = p.hand.length === 0;
+
+                if (state.lapDrawCount > 0) drawCards(pId, state.lapDrawCount);
+
+                if (wasEmptyHanded) {
+                    // 手ぶらボーナス：周回ごとの引き枚数とは別に、手ぶらだった場合のみ追加でドローする
+                    // 結果的に「手ぶらボーナス＋周回ごとの引き枚数」の手札になる
+                    if (state.emptyHandBonus > 0) drawCards(pId, state.emptyHandBonus);
+                } else {
+                    // 手札がちょうど1枚になってしまった場合は停滞を防ぐためさらに2枚、それ以外は+1枚を保証する
+                    let bonusCount = p.hand.length === 1 ? 2 : 1;
+                    drawCards(pId, bonusCount);
+                }
                 log(`${p.name} はGOマス到達でカードを追加ドローしました！（手札 ${p.hand.length}枚）`);
                 
                 if (p.laps >= state.targetLaps) { triggerGameOver(pId); return; }
@@ -1153,24 +1331,27 @@
             }
             renderBoard();
             await new Promise(r => setTimeout(r, 150));
+            if (myEpoch !== gameEpoch) return; // リセットにより世代が変わっていたら、ここで処理を打ち切る
         }
+        if (myEpoch !== gameEpoch) return;
         await handleLandedCell(pId);
     }
 
     async function handleLandedCell(pId) {
+        const myEpoch = gameEpoch;
         const p = state.players[pId];
         const cell = state.board[p.pos];
         if (!cell) {
             log(`${p.name} は空きマス(マス${p.pos})に止まりました。`);
             state.phase = 'place_card';
-            if (pId !== 0) setTimeout(() => cpuPlaceCardTurn(pId), 600);
+            if (pId !== 0) setTimeout(() => { if (myEpoch === gameEpoch) cpuPlaceCardTurn(pId); }, 600);
         } else if (cell.player === pId) {
             log(`${p.name} は自分のマス(マス${p.pos})に丁度止まりました。カードを1枚引きます。`);
             drawCards(pId, 1);
             if (pId === 0) {
                 state.phase = 'own_cell_swap';
             } else {
-                setTimeout(() => cpuSwapTurn(pId), 600);
+                setTimeout(() => { if (myEpoch === gameEpoch) cpuSwapTurn(pId); }, 600);
             }
         } else {
             playSE('battle');
@@ -1845,6 +2026,7 @@
         const newCard = state.players[0].hand.splice(state.selectedCardIndex, 1)[0];
         
         state.board[pos].card = newCard;
+        state.board[pos].revealed = false; // 新しく置いたカードは未公開の裏向き状態に戻す
         addToDiscard(oldCard, 0);
         
         state.selectedCardIndex = -1;
@@ -1862,11 +2044,26 @@
         startLapChallengePhase(state.players[0].pos, 0);
     }
 
+    // 「〇の倍数ターンに〇枚引く」設定に基づき、そのプレイヤーの手番開始時に無条件でドローを行う
+    function applyTurnStartDraw(pId) {
+        const p = state.players[pId];
+        p.turnsTaken = (p.turnsTaken || 0) + 1;
+        if (state.turnDrawEveryN > 0 && state.turnDrawCount > 0 && p.turnsTaken % state.turnDrawEveryN === 0) {
+            const drawn = drawCards(pId, state.turnDrawCount);
+            if (drawn > 0) log(`${p.name} はターン開始時のルールでカードを ${drawn} 枚引きました。（${p.turnsTaken}ターン目）`);
+        }
+    }
+
     function endTurn() {
         state.turn = (state.turn + 1) % state.players.length;
         state.phase = 'move';
+        applyTurnStartDraw(state.turn);
         updateUI();
-        if (state.turn !== 0) setTimeout(() => cpuTurn(state.turn), 800);
+        if (state.turn !== 0) {
+            const myEpoch = gameEpoch;
+            const nextPid = state.turn;
+            setTimeout(() => { if (myEpoch === gameEpoch) cpuTurn(nextPid); }, 800);
+        }
     }
 
     // 「同じマス着地イベント」の中で既に対戦したペアを記録し、同一プレイヤー同士の再戦を防ぐためのキー生成
@@ -1905,10 +2102,16 @@
         const challenger = state.players[pid];
         if (!challenger || challenger.pos !== pos) { processNextLapChallenge(); return; }
 
+        // 着地したプレイヤー(ムーバー)は、このマスにいる誰でも対象にできる。
+        // それ以外の「元々このマスにいたプレイヤー」は、ムーバー以外（元々いた者同士）を対象にはできない。
+        // 第三者(ムーバー)が止まったことで、元々いた者同士のバトル機会が発生することはない。
+        const isMover = (pid === state.lapChallengeMoverPid);
         const notAlreadyBattled = p => !state.lapBattledPairs.has(lapPairKey(pid, p.id));
-        const higherTargets = state.players.filter(p => p.id !== pid && p.pos === pos && p.laps > challenger.laps && notAlreadyBattled(p));
-        const equalTargets = (pid === state.lapChallengeMoverPid)
-            ? state.players.filter(p => p.id !== pid && p.pos === pos && p.laps === challenger.laps && notAlreadyBattled(p))
+        const eligiblePos = p => p.id !== pid && p.pos === pos && notAlreadyBattled(p) &&
+            (isMover || p.id === state.lapChallengeMoverPid);
+        const higherTargets = state.players.filter(p => eligiblePos(p) && p.laps > challenger.laps);
+        const equalTargets = isMover
+            ? state.players.filter(p => eligiblePos(p) && p.laps === challenger.laps)
             : [];
         const targets = [...higherTargets, ...equalTargets];
         if (targets.length === 0 || challenger.hand.length === 0) {
@@ -1938,6 +2141,7 @@
             btn.onclick = () => startLapChallengeBattle(challenger.id, t.id);
             container.appendChild(btn);
         });
+        document.getElementById('lap-challenge-return-overlay').classList.add('hidden');
         document.getElementById('lap-challenge-modal').classList.add('active');
     }
 
@@ -1971,6 +2175,7 @@
     // CPUが周回逆転バトルを仕掛けるかどうか、誰を・本気で（勝つ気で）か、はったりかを決める。
     // 重要な判断材料: (1)相手がトップか (2)相手のあがりが近いか (3)自分の手札に余裕があるか (4)相手の手札が少ないか(1枚/0枚は特に狙い目)
     function cpuDecideLapChallenge(challenger, targets) {
+        const myEpoch = gameEpoch;
         const maxLaps = Math.max(...state.players.map(p => p.laps));
 
         // トッププレイヤーが優勝にどれだけ迫っているか（緊急度）。恨み度の重みや遠慮の判断に使う
@@ -2042,6 +2247,7 @@
 
         if (willAttack) {
             setTimeout(() => {
+                if (myEpoch !== gameEpoch) return; // リセット済みなら何もしない
                 log(battleType === 'kickdown'
                     ? `${challenger.name} が ${target.name} に蹴落としバトルを仕掛けました！（周回 ${challenger.laps} 同数）`
                     : `${challenger.name} が ${target.name} に周回逆転バトルを仕掛けました！（周回 ${challenger.laps} vs ${target.laps}）`);
@@ -2228,6 +2434,7 @@
             const newCard = cpu.hand.splice(bestHandIdx, 1)[0];
             const oldCard = state.board[pos].card;
             state.board[pos].card = newCard;
+            state.board[pos].revealed = false; // 新しく置いたカードは未公開の裏向き状態に戻す
             addToDiscard(oldCard, pId);
             log(`${cpu.name} はマス${pos}のカードを交換し、追加でカードを1枚引きました。`);
             drawCards(pId, 1);
@@ -2336,6 +2543,16 @@
     function showBattleModalFromBoard() {
         document.getElementById('battle-return-overlay').classList.add('hidden');
         document.getElementById('battle-modal').classList.add('active');
+    }
+
+    function hideLapChallengeModalForBoard() {
+        document.getElementById('lap-challenge-modal').classList.remove('active');
+        document.getElementById('lap-challenge-return-overlay').classList.remove('hidden');
+    }
+
+    function showLapChallengeModalFromBoard() {
+        document.getElementById('lap-challenge-return-overlay').classList.add('hidden');
+        document.getElementById('lap-challenge-modal').classList.add('active');
     }
 
     window.onload = initGame;
