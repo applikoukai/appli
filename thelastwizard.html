@@ -445,16 +445,26 @@ function App() {
   const [turnJumpOpenUpward, setTurnJumpOpenUpward] = useState(false);
   const turnJumpRef = useRef(null);
   const hasAutoFitZoom = useRef(false);
-  const boardContainerRef = useRef(null);
-  const mobileFooterRef = useRef(null);
 
   const state = appState.present;
 
   const commit = useCallback((updater) => {
     setAppState(prev => {
       const nextPresent = typeof updater === 'function' ? updater(prev.present) : { ...prev.present, ...updater };
+      // Transient, mutate-only UI flags (flash animations, pending target selection)
+      // must never be baked into history. If a delayed commit (e.g. the fire/lightning
+      // flash timer) fires while one of these is set on `prev.present`, pushing it as-is
+      // into `past` would let a later Undo restore it — permanently, since the timer
+      // that clears it has already fired and won't run again, freezing all the buttons
+      // that check these flags.
+      const sanitizedPrevPresent = {
+        ...prev.present,
+        pendingFireStrike: null,
+        pendingLightningStrike: null,
+        pendingEarthquake: null,
+      };
       return {
-        past: [...prev.past, prev.present],
+        past: [...prev.past, sanitizedPrevPresent],
         present: nextPresent,
         future: []
       };
@@ -525,47 +535,14 @@ function App() {
   // (rounded down to the slider's step of 10, clamped to its 50-200 range) that keeps
   // the board within the current viewport, so it doesn't require horizontal scrolling
   // on narrow phone screens.
-  //
-  // Measures the ACTUAL rendered board (and, on mobile, the fixed footer) instead of
-  // guessing at fixed padding constants, and checks both width AND height — a screen
-  // that's wide but short (landscape phones, a short browser window) needs the height
-  // check too, or "fit" can end up snapping zoom back up to 100% and pushing content
-  // (like the mobile inline end-turn button) below the visible viewport.
   const computeFitZoom = (boardSize) => {
     if (typeof window === 'undefined') return 100;
     const REM_PX = 16;
-    const margin = 16;
-    const currentZoomFraction = state.zoomScale / 100;
-
-    const boardEl = boardContainerRef.current;
-    let widthScale;
-    let heightScale = 1;
-
-    if (boardEl) {
-      const rect = boardEl.getBoundingClientRect();
-      const naturalBoardWidth = rect.width / currentZoomFraction;
-      const naturalBoardHeight = rect.height / currentZoomFraction;
-
-      const availableWidth = window.innerWidth - margin * 2;
-      widthScale = availableWidth / naturalBoardWidth;
-
-      // Everything on the page besides the board (header, side panel, battle log,
-      // mobile inline end-turn button) doesn't scale with zoom — only the board does.
-      const pageHeight = document.documentElement.scrollHeight;
-      const footerEl = mobileFooterRef.current;
-      const footerHeight = (footerEl && state.mobileFooterEnabled) ? footerEl.getBoundingClientRect().height : 0;
-      const nonBoardHeight = (pageHeight - rect.height) + footerHeight;
-      const availableHeight = window.innerHeight - nonBoardHeight - margin;
-
-      heightScale = availableHeight / naturalBoardHeight;
-    } else {
-      const naturalWidthPx = boardSize * 3.5 * REM_PX;
-      const availableWidth = window.innerWidth - 56;
-      widthScale = availableWidth / naturalWidthPx;
-    }
-
-    const scale = Math.min(widthScale, heightScale, 1);
-    const fit = Math.floor(scale * 100 / 10) * 10;
+    const CONTAINER_PADDING_PX = 56; // board card padding + page margins
+    const available = window.innerWidth - CONTAINER_PADDING_PX;
+    const naturalWidthPx = boardSize * 3.5 * REM_PX;
+    if (naturalWidthPx <= available) return 100;
+    const fit = Math.floor((available / naturalWidthPx) * 100 / 10) * 10;
     return Math.max(50, Math.min(100, fit));
   };
 
@@ -2011,7 +1988,7 @@ function App() {
     }`}>
       
       {/* --- Board Area --- */}
-      <div ref={boardContainerRef} className="flex flex-col items-center select-none shadow-2xl rounded-2xl bg-slate-900 p-4 border border-slate-800">
+      <div className="flex flex-col items-center select-none shadow-2xl rounded-2xl bg-slate-900 p-4 border border-slate-800">
         <div className="flex justify-between items-center w-full mb-4 px-1 gap-2">
           <div className="flex gap-2">
             <button onClick={undo} disabled={appState.past.length === 0 || state.pendingLightningStrike || state.pendingFireStrike} className="px-2.5 py-1 text-xs sm:text-sm bg-slate-800 border border-slate-700 disabled:opacity-30 rounded-lg hover:bg-slate-700 transition-colors shadow-sm">
@@ -2246,7 +2223,7 @@ function App() {
 
       {/* --- Mobile Fixed Footer --- */}
       {state.mobileFooterEnabled && (
-        <div ref={mobileFooterRef} className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 p-3 z-40 md:hidden shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)] rounded-t-2xl flex flex-col gap-3">
+        <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 p-3 z-40 md:hidden shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)] rounded-t-2xl flex flex-col gap-3">
           <div className="flex justify-between items-center px-1 relative">
             <div className="font-bold text-[11px] px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 w-24 text-center shrink-0">
               {state.phase.includes('king') ? <span className="text-red-400">King Phase{state.aiControl.king !== 'off' ? (state.aiPaused ? ' ⏸' : ' 🤖') : ''}</span> : <span className="text-purple-400">Wizard Phase{state.aiControl.wizard !== 'off' ? (state.aiPaused ? ' ⏸' : ' 🤖') : ''}</span>}
