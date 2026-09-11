@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stick Fighter - 棒人間格闘ゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        .grid-bg-dark {
+            background-color: #0f172a;
+            background-image: 
+                linear-gradient(to right, rgba(51, 65, 85, 0.4) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(51, 65, 85, 0.4) 1px, transparent 1px);
+            background-size: 25px 25px;
+            background-position: center top;
+        }
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .card-selected {
+            transform: translateY(-8px) scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(234, 179, 8, 0.5), 0 4px 6px -2px rgba(234, 179, 8, 0.2);
+        }
+        @keyframes cardDropIn {
+            0% {
+                transform: translateY(-90px) scale(0.9);
+                opacity: 0;
+            }
+            70% {
+                transform: translateY(6px) scale(1.02);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+        .card-drop-in {
+            animation: cardDropIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center p-2 sm:p-4">
+
+    <!-- メインゲームコンテナ -->
+    <div class="w-full max-w-4xl bg-slate-800 rounded-2xl shadow-2xl overflow-hidden border border-slate-700 flex flex-col">
+        
+        <!-- ヘッダー / ステータスバー -->
+        <header class="bg-slate-950 p-2 sm:p-4 border-b border-slate-700">
+            <div class="flex flex-row justify-between items-center gap-1.5 sm:gap-4">
+                
+                <!-- プレイヤーHP ＆ ステータス -->
+                <div class="w-1/2 min-w-0 flex flex-col gap-1">
+                    <div class="flex justify-between items-center gap-1">
+                        <span class="font-bold text-blue-400 flex items-center gap-1 sm:gap-2 text-xs sm:text-base truncate">
+                            <span class="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-blue-500 inline-block shrink-0"></span> <span class="truncate">プレイヤー</span>
+                        </span>
+                        <span id="player-hp-text" class="text-[11px] sm:text-sm font-semibold shrink-0">50/50</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-3 sm:h-4 rounded-full overflow-hidden p-0.5 border border-slate-700">
+                        <div id="player-hp-bar" class="h-full bg-blue-500 rounded-full transition-all duration-300 w-full"></div>
+                    </div>
+                    <!-- デバフステータス表示 -->
+                    <div class="flex justify-between items-center text-[16px] sm:text-[20px] text-slate-400 px-0.5 sm:px-1 font-mono gap-0.5">
+                        <button id="player-zenryoku-mini-btn" onclick="toggleZenryoku('player')" class="shrink-0 px-1 rounded text-[9px] sm:text-[11px] font-bold border border-slate-600 bg-slate-800 text-slate-300 leading-tight">全力</button>
+                        <span id="player-status-head" class="truncate">手札:5</span>
+                        <span id="player-status-chest" class="truncate">攻撃:-0</span>
+                        <span id="player-status-abs" class="truncate">見切:5</span>
+                    </div>
+                </div>
+
+                <!-- 敵HP ＆ ステータス -->
+                <div class="w-1/2 min-w-0 flex flex-col gap-1">
+                    <div class="flex justify-between items-center gap-1">
+                        <span id="enemy-hp-text" class="text-[11px] sm:text-sm font-semibold shrink-0">50/50</span>
+                        <span class="font-bold text-red-400 flex items-center gap-1 sm:gap-2 text-xs sm:text-base truncate">
+                            <span class="truncate">エネミー</span> <span class="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-500 inline-block shrink-0"></span>
+                        </span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-3 sm:h-4 rounded-full overflow-hidden p-0.5 border border-slate-700">
+                        <div id="enemy-hp-bar" class="h-full bg-red-500 rounded-full transition-all duration-300 w-full ml-auto"></div>
+                    </div>
+                    <!-- デバフステータス表示 -->
+                    <div class="flex justify-between items-center text-[16px] sm:text-[20px] text-slate-400 px-0.5 sm:px-1 font-mono gap-0.5">
+                        <span id="enemy-status-head" class="truncate">手札:5</span>
+                        <span id="enemy-status-chest" class="truncate">攻撃:-0</span>
+                        <span id="enemy-status-abs" class="truncate">見切:5</span>
+                        <span id="enemy-zenryoku-mini-btn" class="shrink-0 px-1 rounded text-[9px] sm:text-[11px] font-bold border border-slate-600 bg-slate-800 text-slate-300 leading-tight cursor-default opacity-80">全力</span>
+                    </div>
+                </div>
+
+            </div>
+        </header>
+
+        <!-- 手札＆キャンバス統合エリア -->
+        <div class="grid-bg-dark w-full border-b border-slate-700 relative">
+            
+            <!-- カードプール（手札）エリア -->
+            <div class="p-3 pt-4 flex justify-center items-center min-h-[110px]">
+                <div id="hand-container" class="flex justify-center gap-2 sm:gap-3 w-full max-w-2xl items-start transition-all relative z-10">
+                    <!-- JavaScriptでカードを挿入 -->
+                </div>
+            </div>
+
+            <!-- キャンバスエリア -->
+            <div class="relative w-full flex justify-center">
+                <canvas id="gameCanvas" width="800" height="330" class="w-full max-w-[800px] h-auto cursor-default block z-0"></canvas>
+
+                <!-- プレイヤー側 ターン＆アクション表示（左端） -->
+                <div id="player-turn-panel" class="absolute top-[58%] left-2 z-20 flex flex-col items-start pointer-events-none">
+                    <span id="player-turn-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-blue-600 text-white tracking-wider uppercase mb-1 shadow-lg">
+                        YOUR TURN
+                    </span>
+                    <div class="flex items-center gap-1 text-yellow-400 text-xs font-bold bg-slate-950/70 px-2 py-0.5 rounded-full border border-slate-700 shadow-lg">
+                        <span>アクション:</span>
+                        <span id="player-action-dots" class="flex gap-1 text-sm">⚡⚡</span>
+                    </div>
+                </div>
+
+                <!-- 敵側 ターン＆アクション表示（右端） -->
+                <div id="enemy-turn-panel" class="absolute top-[58%] right-2 z-20 flex flex-col items-end pointer-events-none">
+                    <span id="enemy-turn-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-400 tracking-wider uppercase mb-1 shadow-lg">
+                        ENEMY TURN
+                    </span>
+                    <div class="flex items-center gap-1 text-yellow-400 text-xs font-bold bg-slate-950/70 px-2 py-0.5 rounded-full border border-slate-700 shadow-lg">
+                        <span>アクション:</span>
+                        <span id="enemy-action-dots" class="flex gap-1 text-sm">⚡⚡</span>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- アクション & メッセージパネル -->
+        <div class="p-3 bg-slate-850 flex flex-col items-center gap-2">
+            <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-2">
+                <div id="log-text" class="text-xs text-slate-300 font-mono bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-800 w-full sm:w-3/4 truncate shadow-inner">
+                    ゲームスタート！カードを選んで攻撃してください。
+                </div>
+                <button id="end-turn-btn" onclick="manualEndTurn()" class="w-full sm:w-auto px-6 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-200 text-sm font-bold rounded-lg border border-slate-600 transition-all shadow-md">
+                    ターン終了
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ゲームオーバーモーダル -->
+    <div id="game-over-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <h2 id="modal-title" class="text-2xl font-black mb-2 text-yellow-400">VICTORY!</h2>
+            <p id="modal-desc" class="text-slate-300 text-sm mb-6">敵を倒しました！</p>
+            <button onclick="resetGame()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg">
+                もう一度プレイ
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 25; // 方眼紙の1マスのピクセルサイズ
+
+        const STATE = {
+            PLAYER_TURN: 0,
+            ANIMATING: 1,
+            ENEMY_TURN: 2,
+            GAME_OVER: 3
+        };
+
+        let currentState = STATE.PLAYER_TURN;
+
+        let canvas, ctx;
+        let player, enemy;
+        let effects = [];
+
+        let maxActions = 2;
+        let currentActions = 2;
+        let enemyCurrentActions = 2;
+        let isFirstTurnOfGame = true;
+        let attacksThisTurn = 0;
+
+        let sharedHand = [];
+        let selectedCardIndex = -1;
+        let playerLockedCardIds = new Set(); // ターン開始時点で範囲外だったカード(そのターン中は使用不可)
+        let playerNaturalLockedCardIds = new Set(); // 全力の効果を除いた「本来の」ロック対象（全力OFF時に復元する）
+        let enemyLockedCardIds = new Set();
+        let newlyAddedCardIds = new Set(); // 直近で補充され、「降ってくる」演出を1回だけ再生するカード
+        let globalAttackCount = 0;
+        const MAX_HAND_SIZE = 5;
+
+        let sharedDeck = [];
+        let sharedDiscardPile = [];
+
+        // すべてのカードで「重さ ＋ 勢い ＝ 5」
+        const CARD_TYPES = [
+            { weight: 3, momentum: 0 },
+            { weight: 2, momentum: 1 },
+            { weight: 1, momentum: 2 },
+            { weight: 0, momentum: 3 }
+        ];
+
+        let cardInstanceCounter = 0; // カード個体を識別するための通し番号(範囲外ロックの判定に使う)
+
+        function initSharedDeck() {
+            sharedDeck = [];
+            sharedDiscardPile = [];
+            const counts = [8, 8, 8, 8]; // 各組合せを均等に生成
+            CARD_TYPES.forEach((type, index) => {
+                for (let i = 0; i < counts[index]; i++) {
+                    sharedDeck.push({ ...type, id: cardInstanceCounter++ });
+                }
+            });
+            shuffleDeck(sharedDeck);
+            updateDeckCountUI();
+        }
+
+        function shuffleDeck(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function drawFromSharedPool() {
+            if (sharedDeck.length === 0) {
+                if (sharedDiscardPile.length === 0) {
+                    initSharedDeck();
+                } else {
+                    sharedDeck = [...sharedDiscardPile];
+                    sharedDiscardPile = [];
+                    shuffleDeck(sharedDeck);
+                    logMessage("共有山札が枯渇したため、捨て札をシャッフルして再構築しました。", "text-cyan-400");
+                }
+            }
+            updateDeckCountUI();
+            return sharedDeck.pop();
+        }
+
+        function updateDeckCountUI() {
+            const countEl = document.getElementById('deck-count');
+            if (countEl) {
+                countEl.textContent = sharedDeck.length;
+            }
+        }
+
+        // アクション値を使い切ったタイミングでの一括最大補充
+        // side: 'player'なら自分側(左端)、'enemy'なら相手側(右端)に補充する
+        function refillHandToMax(side) {
+            while (sharedHand.length < MAX_HAND_SIZE) {
+                const card = drawFromSharedPool();
+                newlyAddedCardIds.add(card.id);
+                if (side === 'player') {
+                    sharedHand.unshift(card);
+                } else {
+                    sharedHand.push(card);
+                }
+            }
+            renderHandUI();
+        }
+
+        // 通算攻撃回数を2回行うごとに1枚補充
+        function checkAttackReplenish(side) {
+            globalAttackCount++;
+            if (globalAttackCount % 2 === 0 && sharedHand.length < MAX_HAND_SIZE) {
+                const card = drawFromSharedPool();
+                newlyAddedCardIds.add(card.id);
+                if (side === 'player') {
+                    sharedHand.unshift(card);
+                } else {
+                    sharedHand.push(card);
+                }
+                renderHandUI();
+            }
+        }
+
+        let mouseX = 0;
+        let mouseY = 0;
+        let hoveredEnemyTarget = -1;
+
+        class Fighter {
+            constructor(x, name, color, direction) {
+                this.baseX = x;
+                this.currentBaseX = x;
+                this.name = name;
+                this.color = color;
+                this.maxHp = 50;
+                this.hp = 50;
+                this.direction = direction; // 1:右向き(PLAYER), -1:左向き(ENEMY)
+                this.nodes = [];
+                this.accumulatedDamage = [0, 0, 0]; // [0]:頭, [1]:胸, [2]:腹 (部位ダメージ・等倍)
+                this.permanentSink = [0, 0, 0];     // [0]:頭, [1]:胸, [2]:腹 (永続へこみ値・ターン開始時に回復しない・姿勢の沈みに使用)
+                this.temporarySink = [0, 0, 0];     // [0]:頭, [1]:胸, [2]:腹 (一時へこみ値)
+                this.sinkCorrection = 0;            // ターン開始時の修正値
+                this.mikiriCards = [];
+                this.mikiriCounter = 0;             // 見切りカード通し番号カウンター
+                this.zenryoku = false;              // 全力状態(自分のターン開始時にOFFへ)
+                this.zenryokuLocked = false;        // 全力状態で攻撃済み(そのターンはOFFにできない)
+
+                // 倒れ込み演出用（最後の一撃を受けた瞬間にtriggerFall()で設定される）
+                this.fallActive = false;
+                this.fallCenter = null;       // 倒れ始めた瞬間の重心座標
+                this.fallOffsets = null;      // 各ノードの重心からの相対位置（倒れ始めた瞬間の姿勢を維持）
+                this.fallVelocity = { x: 0, y: 0 }; // 重心の並進速度
+                this.fallAngularVelocity = 0; // 重心まわりの回転速度
+                this.fallAngle = 0;           // 累積回転角（ラジアン）
+
+                this.resetNodes();
+            }
+
+            addMikiriCard(card, partIndex) {
+                this.mikiriCounter++;
+                this.mikiriCards.push({
+                    id: this.mikiriCounter,
+                    weight: card.weight,
+                    momentum: card.momentum,
+                    partIndex: partIndex
+                });
+                this.trimMikiriCards();
+            }
+
+            trimMikiriCards() {
+                while (this.mikiriCards.length > this.maxMikiri) {
+                    this.mikiriCards.shift();
+                }
+            }
+
+            // 表示へこみ値 = Math.max(0, (永続へこみ値 + 一時へこみ値) - ターン開始時の修正値)
+            get displaySink() {
+                return [
+                    Math.max(0, this.permanentSink[0] + this.temporarySink[0] - this.sinkCorrection),
+                    Math.max(0, this.permanentSink[1] + this.temporarySink[1] - this.sinkCorrection),
+                    Math.max(0, this.permanentSink[2] + this.temporarySink[2] - this.sinkCorrection)
+                ];
+            }
+
+            // 見切り上限：初期値5、腹のダメージ5につき1減少
+            get maxMikiri() {
+                return Math.max(1, 5 - Math.floor(this.accumulatedDamage[2] / 5));
+            }
+
+            // 攻撃力減衰：胸のダメージ5につき1、攻撃時の重さから直接引かれる
+            get attackPowerDecay() {
+                return Math.floor(this.accumulatedDamage[1] / 5);
+            }
+
+            // 全力ON中に自分が追加で受けるダメージ量：固定+1
+            get zenryokuBonusDamage() {
+                return 1;
+            }
+
+            // 手札範囲：画面上の自分側から数えて選択可能なカード枚数。頭ダメージ5につき1減衰。初期値5。
+            // 全力ON中は最大値(5)に固定される
+            get handRange() {
+                if (this.zenryoku) return 5;
+                return Math.max(1, 5 - Math.floor(this.accumulatedDamage[0] / 5));
+            }
+
+            getProtrusion(partIndex) {
+                const avgX = (this.nodes[0].x + this.nodes[1].x + this.nodes[2].x) / 3;
+                return ((this.nodes[partIndex].x - avgX) * this.direction) / GRID_SIZE;
+            }
+
+            resetNodes() {
+                const baseYs = [30, 95, 160, 235, 310];
+                this.nodes = [];
+                for (let i = 0; i < 5; i++) {
+                    this.nodes.push({
+                        x: this.currentBaseX,
+                        y: baseYs[i],
+                        vx: 0,
+                        vy: 0,
+                        targetX: this.currentBaseX
+                    });
+                }
+            }
+
+            update(opponent) {
+                if (this.hp <= 0) {
+                    this.updateFallenPose();
+                    return;
+                }
+
+                const mySinks = this.displaySink;
+                let oppAvgSink = 0;
+                if (opponent) {
+                    let oppTotalSink = 0;
+                    const oppSinks = opponent.displaySink;
+                    for(let i=0; i<3; i++) {
+                        oppTotalSink += oppSinks[i];
+                    }
+                    oppAvgSink = oppTotalSink / 3;
+                }
+                
+                let myTotalSink = 0;
+                for (let i = 0; i < 3; i++) {
+                    myTotalSink += mySinks[i];
+                }
+                const myAvgSink = myTotalSink / 3;
+
+                const pushDir = -this.direction;
+                this.followOffset = (oppAvgSink * GRID_SIZE * 0.4 * this.direction) + (myAvgSink * GRID_SIZE * 0.4 * pushDir);
+                this.currentBaseX = this.baseX + this.followOffset;
+
+                const minX = 40;
+                const maxX = 760;
+                this.currentBaseX = Math.max(minX, Math.min(maxX, this.currentBaseX));
+
+                const baseBottomY = 310;
+                const L = [65, 65, 75, 75]; 
+
+                let tx = [];
+                let ty = [];
+                
+                // 体のへこみ（横方向の計算）
+                for (let i = 0; i < 3; i++) {
+                    const totalSink = mySinks[i];
+                    const localSink = totalSink - myAvgSink;
+                    
+                    const maxOffsetX = GRID_SIZE * 1.5;
+                    let xOffset = (2 / Math.PI) * Math.atan(localSink / 12) * maxOffsetX * pushDir;
+                    xOffset += (2 / Math.PI) * Math.atan(myAvgSink / 15) * (GRID_SIZE * 1.6) * pushDir;
+                    
+                    tx[i] = this.currentBaseX + xOffset;
+                }
+
+                // 足元の固定
+                tx[4] = this.currentBaseX;
+                ty[4] = baseBottomY;
+
+                // 重心が中央に来るように脛が曲がる（膝のXを決定）
+                let idealTx3 = 4 * this.currentBaseX - (tx[0] + tx[1] + tx[2]);
+                let dx34 = idealTx3 - tx[4];
+                
+                const maxDx34 = L[3] * 0.98;
+                if (dx34 > maxDx34) dx34 = maxDx34;
+                if (dx34 < -maxDx34) dx34 = -maxDx34;
+                
+                tx[3] = tx[4] + dx34;
+
+                // 下から上へ、直下の部位との距離を保つようにY座標を決定
+                for (let i = 3; i >= 0; i--) {
+                    let dx = tx[i] - tx[i+1];
+                    const maxDx = L[i] * 0.99;
+                    if (dx > maxDx) dx = maxDx;
+                    if (dx < -maxDx) dx = -maxDx;
+                    
+                    tx[i] = tx[i+1] + dx;
+                    const dy = Math.sqrt(L[i] * L[i] - dx * dx);
+                    ty[i] = ty[i+1] - dy;
+                }
+
+                // 各ノードの追従運動
+                for (let i = 0; i < 5; i++) {
+                    tx[i] = Math.max(minX, Math.min(maxX, tx[i]));
+
+                    const dx = tx[i] - this.nodes[i].x;
+                    const dy = ty[i] - this.nodes[i].y;
+
+                    this.nodes[i].vx += dx * 0.15;
+                    this.nodes[i].vx *= 0.75;
+                    this.nodes[i].x += this.nodes[i].vx;
+
+                    this.nodes[i].vy += dy * 0.15;
+                    this.nodes[i].vy *= 0.75;
+                    this.nodes[i].y += this.nodes[i].vy;
+                }
+            }
+
+            // HPが0になったファイターの「倒れ込み」演出。脚を地面に固定せず、
+            // 後方（向いている方向と逆）へ体全体が倒れていき、仮想の床(FLOOR_Y)で止まる。
+            updateFallenPose() {
+                const FLOOR_Y = 312; // 仮想の床
+
+                if (!this.fallActive || !this.fallCenter) {
+                    // 念のためのフォールバック（通常はtriggerFallで必ず設定される）
+                    this.triggerFall(1, 5);
+                }
+
+                const GRAVITY = 0.55;
+
+                // 重心まわりの回転（角速度は減衰しながら角度に蓄積）
+                this.fallAngularVelocity *= 0.975;
+                this.fallAngle += this.fallAngularVelocity;
+
+                // 重心の並進運動（水平方向の慣性 ＋ 重力加速度）
+                this.fallVelocity.y += GRAVITY;
+                this.fallVelocity.x *= 0.985;
+                this.fallCenter.x += this.fallVelocity.x;
+                this.fallCenter.y += this.fallVelocity.y;
+
+                // 重心を中心に、被弾時点の姿勢（各ノードの相対位置）を回転させて配置
+                const cosA = Math.cos(this.fallAngle);
+                const sinA = Math.sin(this.fallAngle);
+
+                let maxY = -Infinity;
+                const px = [], py = [];
+                for (let i = 0; i < 5; i++) {
+                    const off = this.fallOffsets[i];
+                    const rx = off.dx * cosA - off.dy * sinA;
+                    const ry = off.dx * sinA + off.dy * cosA;
+                    px[i] = this.fallCenter.x + rx;
+                    py[i] = this.fallCenter.y + ry;
+                    if (py[i] > maxY) maxY = py[i];
+                }
+
+                // 仮想の床にめり込んだ分だけ押し戻し、接地したら弾みと回転を減衰させる
+                if (maxY > FLOOR_Y) {
+                    const correction = maxY - FLOOR_Y;
+                    this.fallCenter.y -= correction;
+                    for (let i = 0; i < 5; i++) py[i] -= correction;
+
+                    this.fallVelocity.y *= -0.12;
+                    this.fallVelocity.x *= 0.6;
+                    this.fallAngularVelocity *= 0.8;
+                }
+
+                for (let i = 0; i < 5; i++) {
+                    this.nodes[i].x = px[i];
+                    this.nodes[i].y = py[i];
+                }
+            }
+
+            // 全力ボタンの座標（膝から少し離れた外側）
+            getZenryokuButtonPos() {
+                const kneeX = this.nodes[3].x + (this.direction * 22);
+                const btnX = kneeX + (this.direction * 70);
+                const btnY = this.nodes[3].y;
+                return { x: btnX, y: btnY };
+            }
+
+            drawZenryokuButton(ctx) {
+                const pos = this.getZenryokuButtonPos();
+                const isPlayerFighter = (this === player);
+                const clickable = isPlayerFighter && (currentState === STATE.PLAYER_TURN || currentState === STATE.ANIMATING);
+                const bonus = this.zenryokuBonusDamage;
+                const w = 66;
+                const h = this.zenryoku ? 32 : 26; // 枠内は「全力」＋状態表示のみに絞る
+                const x = pos.x - w / 2;
+                const y = pos.y - h / 2;
+
+                ctx.save();
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(x, y, w, h, 6);
+                } else {
+                    ctx.rect(x, y, w, h);
+                }
+                ctx.fillStyle = this.zenryoku ? 'rgba(234, 179, 8, 0.92)' : 'rgba(15, 23, 42, 0.85)';
+                ctx.fill();
+                ctx.lineWidth = clickable ? 2 : 1;
+                ctx.strokeStyle = this.zenryoku ? '#fef08a' : (clickable ? '#94a3b8' : '#334155');
+                ctx.stroke();
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                if (this.zenryoku) {
+                    // ON中：枠内に「全力」／「ON」（＋ロック中なら鍵マーク）
+                    ctx.fillStyle = '#1e293b';
+                    ctx.font = 'bold 13px sans-serif';
+                    ctx.fillText('全力', pos.x, y + 11);
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.fillText(this.zenryokuLocked ? 'ON🔒' : 'ON', pos.x, y + 25);
+
+                    // 「被ダメージ+X」は枠の外（下）に、「アクション」と同程度の文字サイズで表示
+                    ctx.fillStyle = '#facc15';
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.fillText(`被ダメージ+${bonus}`, pos.x, y + h + 13);
+                } else {
+                    // OFF中：枠内には「全力」のみ、「OFF」は枠の外（下）に小さく表示
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.font = 'bold 13px sans-serif';
+                    ctx.fillText('全力', pos.x, pos.y);
+
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = 'bold 9px sans-serif';
+                    ctx.fillText('OFF', pos.x, y + h + 10);
+                }
+
+                ctx.restore();
+            }
+
+            draw(ctx) {
+                const chest = this.nodes[1];
+                const gloveColor = this.direction === 1 ? '#ef4444' : '#3b82f6';
+                
+                const handX1 = chest.x + (this.direction * 35);
+                const handY1 = chest.y - 10;
+                const handX2 = chest.x + (this.direction * 45);
+                const handY2 = chest.y + 15;
+
+                ctx.save();
+
+                // 腕の描画
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = '#94a3b8';
+                ctx.beginPath(); ctx.moveTo(chest.x, chest.y); ctx.lineTo(handX1, handY1); ctx.stroke();
+                this.drawGlove(ctx, handX1, handY1, gloveColor);
+
+                // 胴体ライン
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 10;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                ctx.beginPath();
+                ctx.moveTo(this.nodes[0].x, this.nodes[0].y);
+                for (let i = 1; i < 3; i++) {
+                    ctx.lineTo(this.nodes[i].x, this.nodes[i].y);
+                }
+                
+                const kneeX = this.nodes[3].x + (this.direction * 22);
+                ctx.lineTo(kneeX, this.nodes[3].y);
+                ctx.lineTo(this.nodes[4].x, this.nodes[4].y);
+                ctx.stroke();
+
+                // ノード描画（頭・胸・腹）
+                const nodeRadii = [24, 18, 16];
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(this.nodes[i].x, this.nodes[i].y, nodeRadii[i], 0, Math.PI * 2);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.stroke();
+                }
+
+                // 脚部ノード
+                ctx.beginPath();
+                ctx.arc(kneeX, this.nodes[3].y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(this.nodes[4].x, this.nodes[4].y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // 手前腕部
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = '#94a3b8';
+                ctx.beginPath(); ctx.moveTo(chest.x, chest.y); ctx.lineTo(handX2, handY2); ctx.stroke();
+                this.drawGlove(ctx, handX2, handY2, gloveColor);
+
+                // 各部位累積ダメージ表示（倒れた後は非表示）
+                if (this.hp > 0) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.textAlign = this.direction === 1 ? 'left' : 'right';
+                    const labels = ["頭", "胸", "腹"];
+                    
+                    for (let i = 0; i < 3; i++) {
+                        const textX = this.nodes[i].x + (this.direction * 68);
+                        const textY = this.nodes[i].y + 4;
+                        
+                        ctx.save();
+                        ctx.shadowColor = '#0f172a';
+                        ctx.shadowBlur = 4;
+
+                        // 1行目：部位ラベル
+                        ctx.font = 'bold 12px sans-serif';
+                        ctx.fillText(`${labels[i]} DMG`, textX, textY - 9);
+
+                        // 2行目：ダメージ数値（2倍サイズ）
+                        ctx.font = 'bold 24px sans-serif';
+                        ctx.fillText(`${this.accumulatedDamage[i]}`, textX, textY + 15);
+
+                        ctx.restore();
+                    }
+                }
+
+                ctx.restore();
+
+                // 全力ボタンも倒れた後は非表示
+                if (this.hp > 0) {
+                    this.drawZenryokuButton(ctx);
+                }
+
+                // 見切りカードも倒れた後は非表示
+                if (this.hp > 0) {
+                    this.drawMikiriCards(ctx);
+                }
+
+                if (this.name === "ENEMY" && currentState === STATE.PLAYER_TURN && selectedCardIndex !== -1) {
+                    this.drawTargetMarkers(ctx);
+                }
+            }
+
+            drawGlove(ctx, x, y, color) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x, y, 12, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            drawTargetMarkers(ctx) {
+                const parts = ["頭", "胸", "腹"];
+                const selectedCard = (currentState === STATE.PLAYER_TURN && selectedCardIndex !== -1) ? sharedHand[selectedCardIndex] : null;
+
+                for (let i = 0; i < 3; i++) {
+                    const node = this.nodes[i];
+                    const protrusion = this.getProtrusion(i);
+                    const isWeakPoint = protrusion > 0.3;
+                    const isHovered = (hoveredEnemyTarget === i);
+
+                    let predictedDmg = null;
+                    if (selectedCard) {
+                        let effWeight = selectedCard.weight;
+                        const existingMikiris = this.mikiriCards.filter(c => c.partIndex === i);
+                        for (let mc of existingMikiris) {
+                            if (mc.weight === selectedCard.weight && selectedCard.weight > 0) {
+                                effWeight = Math.floor(effWeight * 0.5);
+                            }
+                        }
+                        const positionBonus = protrusion * 4; // 0.25単位につき1ダメージ増減
+                        const decay = player.zenryoku ? 0 : player.attackPowerDecay;
+                        effWeight = Math.max(0, effWeight - decay);
+                        predictedDmg = Math.max(0, Math.round(effWeight + positionBonus));
+                        if (this.zenryoku) {
+                            predictedDmg += this.zenryokuBonusDamage;
+                        }
+                    }
+
+                    ctx.save();
+
+                    // 部位ラベル（背面：円やダメージ数値の下に隠れてよい）
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+                    ctx.font = 'bold 16px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(parts[i], node.x, node.y);
+
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, 32, 0, Math.PI * 2);
+
+                    if (isHovered) {
+                        ctx.fillStyle = isWeakPoint ? 'rgba(250, 204, 21, 0.6)' : 'rgba(239, 68, 68, 0.6)';
+                        ctx.fill();
+                        ctx.lineWidth = 4;
+                        ctx.strokeStyle = isWeakPoint ? '#fef08a' : '#fca5a5';
+                    } else {
+                        ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+                        ctx.fill();
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = isWeakPoint ? '#facc15' : '#ef4444';
+                    }
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    if (predictedDmg !== null) {
+                        ctx.fillStyle = '#38bdf8';
+                        ctx.font = 'bold 9px sans-serif';
+                        ctx.fillText('予測ダメージ', node.x, node.y - 10);
+                        ctx.font = 'bold 24px sans-serif';
+                        ctx.fillText(`${predictedDmg}`, node.x, node.y + 12);
+                    } else if (isWeakPoint) {
+                        ctx.fillStyle = '#facc15';
+                        ctx.font = '900 12px sans-serif';
+                        ctx.fillText("WEAK!", node.x, node.y);
+                    }
+
+                    ctx.restore();
+                }
+            }
+
+            drawMikiriCards(ctx) {
+                const counts = [0, 0, 0];
+                const cardW = 34;
+                const cardH = 46;
+
+                let selectedCard = null;
+                if (currentState === STATE.PLAYER_TURN && selectedCardIndex !== -1 && this.name === "ENEMY") {
+                    selectedCard = sharedHand[selectedCardIndex];
+                }
+
+                for (let i = 0; i < this.mikiriCards.length; i++) {
+                    const card = this.mikiriCards[i];
+                    const part = card.partIndex;
+                    const order = counts[part]++;
+                    const node = this.nodes[part];
+
+                    let x = (this.direction === 1) 
+                        ? node.x - 45 - cardW - (order * (cardW + 6))
+                        : node.x + 45 + (order * (cardW + 6));
+                    let y = node.y - cardH / 2;
+
+                    let isCounteringWeight = false;
+                    let isCounteringMomentum = false;
+                    if (selectedCard) {
+                        if (card.weight === selectedCard.weight && selectedCard.weight > 0) isCounteringWeight = true;
+                        if (card.momentum === selectedCard.momentum && selectedCard.momentum > 0) isCounteringMomentum = true;
+                    }
+                    const isCountered = isCounteringWeight || isCounteringMomentum;
+
+                    ctx.save();
+                    if (isCountered) y -= 4;
+
+                    ctx.fillStyle = isCountered ? '#0f293e' : '#1e293b';
+                    ctx.strokeStyle = isCountered ? '#38bdf8' : '#334155';
+                    ctx.lineWidth = isCountered ? 2 : 1;
+                    if (isCountered) {
+                        ctx.shadowColor = '#38bdf8';
+                        ctx.shadowBlur = 8;
+                    }
+
+                    ctx.fillRect(x, y, cardW, cardH);
+                    ctx.strokeRect(x, y, cardW, cardH);
+
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
+
+                    // 識別番号(#id)はFIFO破棄の内部管理用データとして保持するが、通常表示では非表示にする
+
+                    // 重さ表示
+                    ctx.fillStyle = '#fca5a5';
+                    ctx.fillText(`重:${card.weight}`, x + 3, y + 20);
+                    
+                    // 勢い表示
+                    ctx.fillStyle = '#93c5fd';
+                    ctx.fillText(`勢:${card.momentum}`, x + 3, y + 36);
+
+                    ctx.restore();
+                }
+            }
+
+            takeDamage(partIndex, damage, tempSink = 0) {
+                const wasAlive = this.hp > 0;
+                this.hp -= damage;
+                this.accumulatedDamage[partIndex] += damage; // 部位ダメージ表示・各種デバフの元（等倍）
+                this.permanentSink[partIndex] += damage * 2; // 永続へこみ値（ターン開始時に回復しない・姿勢の沈みの元）は2倍
+                this.temporarySink[partIndex] += tempSink;
+                if (this.hp < 0) this.hp = 0;
+                this.trimMikiriCards();
+
+                if (wasAlive && this.hp <= 0) {
+                    this.triggerFall(partIndex, damage);
+                }
+
+                return damage;
+            }
+
+            // 最後の一撃を受けた瞬間の重心・各部位の相対位置・衝撃による回転速度を記録する
+            triggerFall(partIndex, damage) {
+                const nodes = this.nodes;
+                let cx = 0, cy = 0;
+                for (let i = 0; i < 5; i++) {
+                    cx += nodes[i].x;
+                    cy += nodes[i].y;
+                }
+                cx /= 5;
+                cy /= 5;
+
+                this.fallCenter = { x: cx, y: cy };
+                this.fallOffsets = nodes.map(n => ({ dx: n.x - cx, dy: n.y - cy }));
+
+                const fallDir = -this.direction; // 攻撃を受けて後方へ吹き飛ぶ
+                // ダメージが大きくても暴れすぎないよう、力の元になる数値には上下限を設ける
+                const forceMagnitude = Math.min(10, Math.max(6, damage)) * 0.35;
+                this.fallVelocity = { x: fallDir * forceMagnitude, y: -forceMagnitude * 0.3 };
+
+                // 重心まわりの回転：常に後方へ倒れる基本回転力 ＋ 被弾部位と重心のズレ(てこの長さ)による追加トルク
+                const impactNode = nodes[partIndex];
+                const leverY = impactNode.y - cy;
+                const forceX = fallDir * forceMagnitude;
+                const torque = -(leverY * forceX); // 2Dクロス積のz成分（力は水平のみのためFy=0）
+                const baseKick = fallDir * forceMagnitude * 0.045;
+                const torqueKick = torque * 0.00008;
+                this.fallAngularVelocity = baseKick + torqueKick;
+
+                this.fallAngle = 0;
+                this.fallActive = true;
+            }
+
+            // ターン開始時に(永続へこみ値 + 一時へこみ値)の最小値を修正値として記録し反映
+            reduceDisplaySink() {
+                const rawSinks = [
+                    this.permanentSink[0] + this.temporarySink[0],
+                    this.permanentSink[1] + this.temporarySink[1],
+                    this.permanentSink[2] + this.temporarySink[2]
+                ];
+                this.sinkCorrection = Math.min(rawSinks[0], rawSinks[1], rawSinks[2]);
+            }
+        }
+
+        function selectCard(index) {
+            if (currentState !== STATE.PLAYER_TURN || currentActions < 1) return;
+            const card = sharedHand[index];
+            if (!card || playerLockedCardIds.has(card.id)) {
+                logMessage("手札範囲外のカードは選択できません。", "text-red-400 font-bold");
+                return;
+            }
+            if (selectedCardIndex === index) {
+                selectedCardIndex = -1;
+            } else {
+                selectedCardIndex = index;
+            }
+            renderHandUI();
+        }
+
+        function renderHandUI() {
+            const container = document.getElementById('hand-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            sharedHand.forEach((card, idx) => {
+                const cardEl = document.createElement('div');
+                const isSelected = (selectedCardIndex === idx);
+                const inRange = !playerLockedCardIds.has(card.id);
+                const satisfiesAction = currentActions >= 1;
+                const canPlay = satisfiesAction && currentState === STATE.PLAYER_TURN && inRange;
+                const isNew = newlyAddedCardIds.has(card.id);
+                
+                let baseClasses = `relative flex-1 max-w-[110px] bg-slate-800/90 backdrop-blur-md border-2 rounded-xl p-2 flex flex-col items-center justify-between transition-all card-shadow select-none`;
+                
+                if (canPlay) {
+                    baseClasses += isSelected ? ' border-yellow-400 card-selected cursor-pointer' : ' border-slate-500 hover:border-slate-300 cursor-pointer';
+                } else {
+                    baseClasses += ' border-slate-700 opacity-40 grayscale cursor-not-allowed';
+                }
+
+                if (isNew) {
+                    baseClasses += ' card-drop-in';
+                }
+
+                cardEl.className = baseClasses;
+                cardEl.onclick = () => selectCard(idx);
+
+                cardEl.innerHTML = `
+                    ${!inRange ? '<div class="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow z-10">範囲外</div>' : ''}
+                    <div class="flex flex-col gap-1 text-center w-full my-1">
+                        <div class="text-xs font-black text-red-400 bg-red-950/60 rounded py-0.5 border border-red-900/50 shadow-inner">
+                            重さ ${card.weight}
+                        </div>
+                        <div class="text-xs font-black text-blue-400 bg-blue-950/60 rounded py-0.5 border border-blue-900/50 shadow-inner">
+                            勢い ${card.momentum}
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(cardEl);
+            });
+
+            // 演出は1回再生すれば十分なので、このレンダーが終わったら「新規」マークを消しておく
+            if (newlyAddedCardIds.size > 0) {
+                newlyAddedCardIds.clear();
+            }
+        }
+
+        function executeAttack(targetPartIndex) {
+            if (selectedCardIndex === -1 || currentState !== STATE.PLAYER_TURN) return;
+
+            const card = sharedHand[selectedCardIndex];
+
+            if (currentActions < 1) {
+                logMessage(`アクションが足りません！`, "text-red-400 font-bold");
+                return;
+            }
+
+            sharedHand.splice(selectedCardIndex, 1);
+            sharedDiscardPile.push(card);
+            selectedCardIndex = -1;
+
+            currentActions -= 1;
+            attacksThisTurn++;
+            checkAttackReplenish('player');
+
+            currentState = STATE.ANIMATING;
+            renderHandUI();
+            updateUI();
+            updateDeckCountUI();
+
+            const targetNode = enemy.nodes[targetPartIndex];
+            const protrusion = enemy.getProtrusion(targetPartIndex);
+
+            let isMikiri = false;
+            let effWeight = card.weight;
+            let effMomentum = card.momentum;
+
+            const existingMikiris = enemy.mikiriCards.filter(c => c.partIndex === targetPartIndex);
+            
+            for (let mc of existingMikiris) {
+                if (mc.weight === card.weight && card.weight > 0) {
+                    effWeight = Math.floor(effWeight * 0.5);
+                    isMikiri = true;
+                }
+                if (mc.momentum === card.momentum && card.momentum > 0) {
+                    effMomentum = Math.floor(effMomentum * 0.5);
+                    isMikiri = true;
+                }
+            }
+
+            enemy.addMikiriCard(card, targetPartIndex);
+
+            const positionBonus = protrusion * 4; // 0.25単位につき1ダメージ増減
+            const attackerDecay = player.zenryoku ? 0 : player.attackPowerDecay;
+            if (player.zenryoku) {
+                player.zenryokuLocked = true; // 全力状態で攻撃したのでこのターンは解除不可
+            }
+            effWeight = Math.max(0, effWeight - attackerDecay);
+            let baseDmg = Math.max(0, Math.round(effWeight + positionBonus));
+            if (enemy.zenryoku) {
+                baseDmg += enemy.zenryokuBonusDamage;
+            }
+            let baseTempSink = Math.round((effMomentum * 4) * (1 + Math.max(0, protrusion) * 0.5));
+
+            const finalDmg = enemy.takeDamage(targetPartIndex, baseDmg, baseTempSink);
+
+            if (isMikiri) {
+                addEffect(targetNode.x, targetNode.y - 30, "見切り!", "#38bdf8", 1.2);
+                logMessage(`⚡ 敵の[${["頭","胸","腹"][targetPartIndex]}]で見切り発動！威力が半減！`, "text-cyan-300");
+            }
+
+            addEffect(targetNode.x, targetNode.y, `-${finalDmg}`, '#ffffff', 1.0);
+            logMessage(`プレイヤーの攻撃！ 部位[${["頭","胸","腹"][targetPartIndex]}]に ${finalDmg} ダメージ！`, "text-yellow-300");
+
+            if (finalDmg >= 4) {
+                currentActions += 1;
+                addEffect(targetNode.x, targetNode.y - 55, "⚡アクション+1!", "#facc15", 1.4);
+                logMessage(`⚡ 会心の一撃！ ${finalDmg}ダメージでアクション+1！`, "text-yellow-300 font-bold");
+            }
+
+            setTimeout(() => {
+                if (enemy.hp <= 0) {
+                    endGame(true);
+                } else if (currentActions > 0) {
+                    currentState = STATE.PLAYER_TURN;
+                    renderHandUI();
+                    updateUI();
+                } else {
+                    refillHandToMax('player');
+                    setTimeout(startEnemyTurn, 500);
+                }
+            }, 600);
+        }
+
+        function startPlayerTurn() {
+            currentState = STATE.PLAYER_TURN;
+            currentActions = isFirstTurnOfGame ? 1 : maxActions; // 先攻1ターン目だけアクション1
+            isFirstTurnOfGame = false;
+            attacksThisTurn = 0;
+
+            player.temporarySink = [0, 0, 0];
+            player.reduceDisplaySink();
+            player.zenryoku = false; // 自分のターン開始時に全力OFF
+            player.zenryokuLocked = false;
+
+            // ターン開始時点で範囲外だったカードを記録（全力ONの間は一時的に解除される）
+            const playerRangeAtStart = Math.min(player.handRange, sharedHand.length);
+            playerNaturalLockedCardIds = new Set(sharedHand.slice(playerRangeAtStart).map(c => c.id));
+            playerLockedCardIds = new Set(playerNaturalLockedCardIds);
+
+            selectedCardIndex = -1;
+            renderHandUI();
+            updateUI();
+            logMessage("あなたのターン！カードを選んで敵を攻撃してください。", "text-blue-300");
+        }
+
+        // 「仮想対戦」：手札範囲内の各カード×3部位の組み合わせを実際のダメージ計算式で予測し、
+        // 敵AIが最も良い一手を選ぶために使う（見切り・重心補正・全力状態を反映）
+        function predictEnemyAttackDamage(card, targetPart) {
+            let effWeight = card.weight;
+            const existingMikiris = player.mikiriCards.filter(c => c.partIndex === targetPart);
+            for (const mc of existingMikiris) {
+                if (mc.weight === card.weight && card.weight > 0) {
+                    effWeight = Math.floor(effWeight * 0.5);
+                }
+            }
+            const protrusion = player.getProtrusion(targetPart);
+            const positionBonus = protrusion * 4;
+            const attackerDecay = enemy.zenryoku ? 0 : enemy.attackPowerDecay;
+            effWeight = Math.max(0, effWeight - attackerDecay);
+            let dmg = Math.max(0, Math.round(effWeight + positionBonus));
+            if (player.zenryoku) {
+                dmg += player.zenryokuBonusDamage;
+            }
+            return dmg;
+        }
+
+        function startEnemyTurn() {
+            currentState = STATE.ENEMY_TURN;
+            
+            // 敵のターン開始時に姿勢（一時へこみ）をリセット＆へこみ最小値を減算
+            enemy.temporarySink = [0, 0, 0];
+            enemy.reduceDisplaySink();
+            enemy.zenryoku = false; // 自分のターン開始時に全力OFF
+            enemy.zenryokuLocked = false;
+
+            // 敵AI：全力ONの損得を評価して判断する
+            // 期待メリット = 減衰解除分の火力アップ×このターンの想定攻撃回数
+            // 期待リスク = 被ダメ増加(固定+1)×相手ターンで想定される被弾回数、かつHPに余裕があるか
+            const decay = enemy.attackPowerDecay;
+            if (decay > 0) {
+                const expectedAttacks = 2;
+                const expectedBenefit = decay * expectedAttacks;
+                const bonusPerHit = 1; // 全力の被ダメ増加は固定+1
+                const expectedRisk = bonusPerHit * expectedAttacks;
+                const hpMargin = enemy.hp - expectedRisk * 1.5;
+                if (expectedBenefit >= expectedRisk && hpMargin > enemy.maxHp * 0.3) {
+                    enemy.zenryoku = true;
+                }
+            }
+
+            // ターン開始時点(全力の判断を反映した状態)で範囲外だったカードを、このターンの間ずっと範囲外として固定する
+            const enemyRangeAtStart = Math.min(enemy.handRange, sharedHand.length);
+            const enemyMinIndexAtStart = sharedHand.length - enemyRangeAtStart;
+            enemyLockedCardIds = new Set(sharedHand.slice(0, enemyMinIndexAtStart).map(c => c.id));
+            
+            updateUI();
+            logMessage("敵のターン！", "text-red-400 font-bold");
+
+            let enemyActions = 2;
+            enemyCurrentActions = 2;
+            attacksThisTurn = 0;
+
+            function doEnemyAttack() {
+                if (player.hp <= 0) {
+                    return;
+                }
+
+                if (enemyActions <= 0) {
+                    refillHandToMax('enemy');
+                    startPlayerTurn();
+                    return;
+                }
+
+                if (sharedHand.length === 0) {
+                    startPlayerTurn();
+                    return;
+                }
+
+                // 敵はターン開始時点で範囲内だったカード(IDでロック管理)のみ選べる
+                // 仮想対戦：ロックされていない全カード×3部位を仮評価し、最も良い一手を選ぶ
+                let bestIndex = -1;
+                let bestPart = 0;
+                let bestScore = -Infinity;
+                for (let idx = 0; idx < sharedHand.length; idx++) {
+                    const candidateCard = sharedHand[idx];
+                    if (enemyLockedCardIds.has(candidateCard.id)) continue;
+                    for (let part = 0; part < 3; part++) {
+                        const predictedDmg = predictEnemyAttackDamage(candidateCard, part);
+                        let score = predictedDmg;
+                        if (predictedDmg >= 4) score += 4; // アクション+1獲得を高く評価
+                        score += Math.random() * 1.2; // 読みやすくなりすぎないよう少しゆらぎを加える
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestIndex = idx;
+                            bestPart = part;
+                        }
+                    }
+                }
+
+                // 万一すべてロックされていた場合のフォールバック（通常は起こらない）
+                if (bestIndex === -1) {
+                    bestIndex = sharedHand.length - 1;
+                }
+
+                const chosenIndex = bestIndex;
+                const randCard = sharedHand[chosenIndex];
+
+                enemyActions -= 1;
+                enemyCurrentActions = enemyActions;
+
+                sharedHand.splice(chosenIndex, 1);
+                sharedDiscardPile.push(randCard);
+                checkAttackReplenish('enemy');
+                updateDeckCountUI();
+                renderHandUI();
+
+                const targetPart = bestPart;
+                const targetNode = player.nodes[targetPart];
+                const protrusion = player.getProtrusion(targetPart);
+
+                let effWeight = randCard.weight;
+                let effMomentum = randCard.momentum;
+                let isMikiri = false;
+
+                const existingMikiris = player.mikiriCards.filter(c => c.partIndex === targetPart);
+                for (let mc of existingMikiris) {
+                    if (mc.weight === randCard.weight && randCard.weight > 0) {
+                        effWeight = Math.floor(effWeight * 0.5);
+                        isMikiri = true;
+                    }
+                    if (mc.momentum === randCard.momentum && randCard.momentum > 0) {
+                        effMomentum = Math.floor(effMomentum * 0.5);
+                        isMikiri = true;
+                    }
+                }
+
+                player.addMikiriCard(randCard, targetPart);
+
+                const positionBonus = protrusion * 4; // 0.25単位につき1ダメージ増減
+                const attackerDecay = enemy.zenryoku ? 0 : enemy.attackPowerDecay;
+                if (enemy.zenryoku) {
+                    enemy.zenryokuLocked = true; // 全力状態で攻撃したのでこのターンは解除不可
+                }
+                effWeight = Math.max(0, effWeight - attackerDecay);
+                let baseDmg = Math.max(0, Math.round(effWeight + positionBonus));
+                if (player.zenryoku) {
+                    baseDmg += player.zenryokuBonusDamage;
+                }
+                let baseTempSink = Math.round((effMomentum * 4) * (1 + Math.max(0, protrusion) * 0.5));
+
+                const finalDmg = player.takeDamage(targetPart, baseDmg, baseTempSink);
+
+                if (isMikiri) {
+                    addEffect(targetNode.x, targetNode.y - 30, "見切り!", "#38bdf8", 1.2);
+                    logMessage(`⚡ プレイヤーの[${["頭","胸","腹"][targetPart]}]で見切り発動！`, "text-cyan-300");
+                }
+
+                addEffect(targetNode.x, targetNode.y, `-${finalDmg}`, '#ef4444', 1.0);
+                logMessage(`敵の攻撃！ 部位[${["頭","胸","腹"][targetPart]}]に ${finalDmg} ダメージ！`, "text-red-300");
+
+                if (finalDmg >= 4) {
+                    enemyActions += 1;
+                    enemyCurrentActions = enemyActions;
+                    addEffect(targetNode.x, targetNode.y - 55, "⚡アクション+1!", "#facc15", 1.4);
+                    logMessage(`⚡ 敵の会心の一撃！ ${finalDmg}ダメージでアクション+1！`, "text-yellow-300 font-bold");
+                }
+
+                attacksThisTurn++;
+                updateUI();
+
+                if (player.hp <= 0) {
+                    endGame(false);
+                } else {
+                    setTimeout(doEnemyAttack, 800);
+                }
+            }
+
+            setTimeout(doEnemyAttack, 600);
+        }
+
+        function manualEndTurn() {
+            if (currentState !== STATE.PLAYER_TURN) return;
+            selectedCardIndex = -1;
+            setTimeout(startEnemyTurn, 300);
+        }
+
+        function setupEventListeners() {
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                mouseX = (e.clientX - rect.left) * scaleX;
+                mouseY = (e.clientY - rect.top) * scaleY;
+
+                hoveredEnemyTarget = -1;
+
+                if (currentState === STATE.PLAYER_TURN && selectedCardIndex !== -1) {
+                    for (let i = 0; i < 3; i++) {
+                        const node = enemy.nodes[i];
+                        const dx = mouseX - node.x;
+                        const dy = mouseY - node.y;
+                        if (dx * dx + dy * dy < 35 * 35) {
+                            hoveredEnemyTarget = i;
+                            break;
+                        }
+                    }
+                }
+
+                let overZenryokuBtn = false;
+                if (currentState === STATE.PLAYER_TURN || currentState === STATE.ANIMATING) {
+                    const btnPos = player.getZenryokuButtonPos();
+                    if (Math.abs(mouseX - btnPos.x) < 34 && Math.abs(mouseY - btnPos.y) < 36) {
+                        overZenryokuBtn = true;
+                    }
+                }
+
+                if (overZenryokuBtn) {
+                    canvas.style.cursor = 'pointer';
+                } else if (hoveredEnemyTarget !== -1) {
+                    canvas.style.cursor = 'crosshair';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+            });
+
+            canvas.addEventListener('mousedown', () => {
+                if (currentState === STATE.PLAYER_TURN || currentState === STATE.ANIMATING) {
+                    const btnPos = player.getZenryokuButtonPos();
+                    if (Math.abs(mouseX - btnPos.x) < 34 && Math.abs(mouseY - btnPos.y) < 36) {
+                        toggleZenryoku('player');
+                        return;
+                    }
+                }
+
+                if (currentState === STATE.PLAYER_TURN && selectedCardIndex !== -1 && hoveredEnemyTarget !== -1) {
+                    executeAttack(hoveredEnemyTarget);
+                }
+            });
+        }
+
+        function addEffect(x, y, text, color, life = 1.0) {
+            effects.push({ x, y, text, color, life, maxLife: life, vy: -1.5 });
+        }
+
+        // 全力状態のON/OFF切り替え(自分のターン中のみ、カード/部位選択タイミングで可能)
+        function toggleZenryoku(side) {
+            if (side === 'player') {
+                if (currentState !== STATE.PLAYER_TURN && currentState !== STATE.ANIMATING) return;
+                if (player.zenryoku && player.zenryokuLocked) {
+                    logMessage("全力状態で攻撃済みのため、このターンは解除できません！", "text-red-400 font-bold");
+                    return;
+                }
+                player.zenryoku = !player.zenryoku;
+
+                // 全力ON中は手札範囲が最大になるため、範囲外ロックを一時的に解除する
+                // 全力OFFに戻したら、本来のロック(ターン開始時点の範囲外カード)を復元する
+                if (player.zenryoku) {
+                    playerLockedCardIds = new Set();
+                } else {
+                    playerLockedCardIds = new Set(playerNaturalLockedCardIds);
+                }
+                renderHandUI();
+
+                logMessage(player.zenryoku ? "全力状態ON！攻撃力減衰が消える代わり、被弾時のダメージが増加します。" : "全力状態OFF。", "text-yellow-300 font-bold");
+                updateUI();
+            }
+        }
+
+        // ステータス行に置いてある小さな全力ボタンの見た目を更新する
+        function updateZenryokuMiniButton(fighter, elId, clickable) {
+            const btn = document.getElementById(elId);
+            if (!btn) return;
+            const base = "shrink-0 px-1 rounded text-[9px] sm:text-[11px] font-bold border leading-tight transition-all";
+            const interactivity = clickable ? " cursor-pointer hover:brightness-110" : " cursor-default opacity-80";
+            if (fighter.zenryoku) {
+                btn.className = `${base}${interactivity} bg-yellow-500 text-slate-900 border-yellow-300`;
+            } else {
+                btn.className = `${base}${interactivity} bg-slate-800 text-slate-300 border-slate-600`;
+            }
+        }
+
+        function updateUI() {
+            const p1Percent = Math.max(0, (player.hp / player.maxHp) * 100);
+            const p2Percent = Math.max(0, (enemy.hp / enemy.maxHp) * 100);
+
+            document.getElementById('player-hp-bar').style.width = `${p1Percent}%`;
+            document.getElementById('enemy-hp-bar').style.width = `${p2Percent}%`;
+
+            document.getElementById('player-hp-text').textContent = `${Math.ceil(player.hp)}/${player.maxHp}`;
+            document.getElementById('enemy-hp-text').textContent = `${Math.ceil(enemy.hp)}/${enemy.maxHp}`;
+
+            // 全力中は「手札範囲」「攻撃力減衰」が実際に変化するので、数値だけ色を変えて分かるようにする
+            const statLine = (label, value, isBoosted) => {
+                return isBoosted
+                    ? `${label}:<span class="text-yellow-300">${value}</span>`
+                    : `${label}:${value}`;
+            };
+
+            document.getElementById('player-status-head').innerHTML = statLine('手札', player.handRange, player.zenryoku);
+            document.getElementById('player-status-chest').innerHTML = statLine('攻撃', `-${player.zenryoku ? 0 : player.attackPowerDecay}`, player.zenryoku);
+            document.getElementById('player-status-abs').textContent = `見切:${player.maxMikiri}`;
+
+            document.getElementById('enemy-status-head').innerHTML = statLine('手札', enemy.handRange, enemy.zenryoku);
+            document.getElementById('enemy-status-chest').innerHTML = statLine('攻撃', `-${enemy.zenryoku ? 0 : enemy.attackPowerDecay}`, enemy.zenryoku);
+            document.getElementById('enemy-status-abs').textContent = `見切:${enemy.maxMikiri}`;
+
+            updateZenryokuMiniButton(player, 'player-zenryoku-mini-btn', currentState === STATE.PLAYER_TURN || currentState === STATE.ANIMATING);
+            updateZenryokuMiniButton(enemy, 'enemy-zenryoku-mini-btn', false);
+
+            const playerDots = '⚡'.repeat(Math.max(0, currentActions));
+            document.getElementById('player-action-dots').textContent = playerDots || 'none';
+
+            const enemyDots = '⚡'.repeat(Math.max(0, enemyCurrentActions));
+            document.getElementById('enemy-action-dots').textContent = enemyDots || 'none';
+
+            const playerBadge = document.getElementById('player-turn-badge');
+            const enemyBadge = document.getElementById('enemy-turn-badge');
+            const playerPanel = document.getElementById('player-turn-panel');
+            const enemyPanel = document.getElementById('enemy-turn-panel');
+            const panelBaseClasses = "absolute top-[58%] pointer-events-none flex flex-col";
+            // ANIMATING はプレイヤーの攻撃演出中なので、プレイヤー側のターン扱いにする
+            if (currentState === STATE.PLAYER_TURN || currentState === STATE.ANIMATING) {
+                playerBadge.textContent = "YOUR TURN";
+                playerBadge.className = "px-3 py-1 rounded-full text-xs font-bold bg-blue-600 text-white tracking-wider uppercase mb-1 shadow-lg";
+                enemyBadge.textContent = "WAITING";
+                enemyBadge.className = "px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-400 tracking-wider uppercase mb-1 shadow-lg";
+                playerPanel.className = `${panelBaseClasses} left-2 items-start z-20`;
+                enemyPanel.className = `${panelBaseClasses} right-2 items-end -z-10`;
+            } else if (currentState === STATE.ENEMY_TURN) {
+                enemyBadge.textContent = "ENEMY TURN";
+                enemyBadge.className = "px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white tracking-wider uppercase mb-1 shadow-lg";
+                playerBadge.textContent = "WAITING";
+                playerBadge.className = "px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-400 tracking-wider uppercase mb-1 shadow-lg";
+                enemyPanel.className = `${panelBaseClasses} right-2 items-end z-20`;
+                playerPanel.className = `${panelBaseClasses} left-2 items-start -z-10`;
+            }
+        }
+
+        function logMessage(msg, colorClass = "text-slate-300") {
+            const logEl = document.getElementById('log-text');
+            if (logEl) {
+                logEl.innerHTML = `<span class="${colorClass}">${msg}</span>`;
+            }
+        }
+
+        function drawGridPaper(ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function gameLoop() {
+            drawGridPaper(ctx);
+
+            if (player && enemy) {
+                player.update(enemy);
+                enemy.update(player);
+
+                player.draw(ctx);
+                enemy.draw(ctx);
+            }
+
+            for (let i = effects.length - 1; i >= 0; i--) {
+                const eff = effects[i];
+                eff.y += eff.vy;
+                eff.life -= 0.02;
+
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, eff.life / eff.maxLife);
+                ctx.font = '900 16px sans-serif';
+                ctx.fillStyle = eff.color;
+                ctx.textAlign = 'center';
+                ctx.fillText(eff.text, eff.x, eff.y);
+                ctx.restore();
+
+                if (eff.life <= 0) effects.splice(i, 1);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame(isWin) {
+            currentState = STATE.GAME_OVER;
+            const modal = document.getElementById('game-over-modal');
+            const title = document.getElementById('modal-title');
+            const desc = document.getElementById('modal-desc');
+
+            title.textContent = isWin ? "YOU WIN!" : "GAME OVER";
+            title.className = `text-3xl font-black mb-2 ${isWin ? 'text-yellow-400' : 'text-red-500'}`;
+            desc.textContent = isWin ? "敵ファイターを撃破しました！" : "プレイヤーは倒れました...";
+
+            modal.classList.remove('hidden');
+        }
+
+        function resetGame() {
+            document.getElementById('game-over-modal').classList.add('hidden');
+            isFirstTurnOfGame = true;
+            initGame();
+        }
+
+        function initGame() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            player = new Fighter(240, "PLAYER", "#3b82f6", 1);
+            enemy = new Fighter(560, "ENEMY", "#ef4444", -1);
+
+            effects = [];
+            sharedHand = [];
+            selectedCardIndex = -1;
+            isFirstTurnOfGame = true;
+            globalAttackCount = 0;
+
+            initSharedDeck();
+            refillHandToMax();
+            startPlayerTurn();
+        }
+
+        window.addEventListener('load', () => {
+            initGame();
+            setupEventListeners(); // キャンバスへのイベント登録は最初の1回だけでよい(reset時の重複登録防止)
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
