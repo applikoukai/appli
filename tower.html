@@ -689,11 +689,11 @@
                 <p>・<strong>自分のマス:</strong> 自分の所有するマスを通過、または丁度止まった時にカードを1枚引きます。</p>
                 <p>・<strong>GOマス (スタート):</strong> 周回してGOマスに到達または通過した際、設定した枚数（標準1枚）を引きます。到達の瞬間に手札が0枚(手ぶら)だった場合は、手ぶらボーナス（標準2枚）を追加で引き、結果的に「手ぶらボーナス＋周回ごとの引き枚数」枚になります。</p>
                 <p>・<strong>ターン定期ドロー:</strong> 設定で「〇の倍数ターンに〇枚引く」を有効にすると、そのプレイヤーの該当ターン開始時に無条件でカードを引きます（標準ではOFF）。</p>
-                <p>・<strong>カード交換:</strong> 自分のマスに丁度止まると手札からカード交換が行えます。カード交換を行うと、元々置かれていたカードは捨て札になり、追加で1枚引くことができます。</p>
+                <p>・<strong>カード交換:</strong> 自分のマスに丁度止まるとカード交換が行えます。カード交換を行うと、元々置かれていたカードは捨て札になり、追加で1枚引くことができます。</p>
             </div>
             <div>
                 <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-red-500 pl-2">🏠 マスの所有とバトル</h4>
-                <p>・移動後、空きマスであれば手札のカードを裏向きで置いて自分のマスにできます。</p>
+                <p>・移動後、空きマスであれば手札のカードを設置して自分のマスにできます。</p>
                 <p>・他人のマスに止まるとバトルを仕掛けることができます。<br>
                    【バトルの流れ】<br>
                    ① 攻撃側: 手札からカードを1枚裏向きで出す。<br>
@@ -711,7 +711,7 @@
             </div>
             <div>
                 <h4 class="font-bold text-sm sm:text-base text-gray-900 mb-1 border-l-4 border-orange-600 pl-2">⚡ 蹴落としバトル</h4>
-                <p>・移動して同じマスに止まったプレイヤーは、周回逆転バトルと同じタイミングで自分と周回数が同じ相手にも攻撃を仕掛けられます（同じマスに元からいた他のプレイヤーには、この権利はありません）。</p>
+                <p>・移動して同じマスに止まったプレイヤーは、周回逆転バトルと同じタイミングで自分と周回数が同じ相手にも攻撃を仕掛けられます（同じマスに元からいた他のプレイヤーには、この権利はありません）。ただし相手が周回0の場合は、負けさせても効果が無いため仕掛けられません。</p>
                 <p>・バトルの流れは周回逆転バトルと同じですが、攻撃側が勝利した場合は周回数の入れ替えではなく、相手の周回数が1つ減ります。攻撃側が負けてもペナルティはありません。</p>
             </div>
             <div>
@@ -2110,8 +2110,9 @@
         const eligiblePos = p => p.id !== pid && p.pos === pos && notAlreadyBattled(p) &&
             (isMover || p.id === state.lapChallengeMoverPid);
         const higherTargets = state.players.filter(p => eligiblePos(p) && p.laps > challenger.laps);
+        // 周回0の相手への蹴落としは、既に0周のため負けさせても効果が無い（-1にできない）ので対象から除外する
         const equalTargets = isMover
-            ? state.players.filter(p => eligiblePos(p) && p.laps === challenger.laps)
+            ? state.players.filter(p => eligiblePos(p) && p.laps === challenger.laps && p.laps > 0)
             : [];
         const targets = [...higherTargets, ...equalTargets];
         if (targets.length === 0 || challenger.hand.length === 0) {
@@ -2174,9 +2175,25 @@
     // CPUが周回逆転バトルを仕掛けるかどうか、誰を狙うかを決める
     // CPUが周回逆転バトルを仕掛けるかどうか、誰を・本気で（勝つ気で）か、はったりかを決める。
     // 重要な判断材料: (1)相手がトップか (2)相手のあがりが近いか (3)自分の手札に余裕があるか (4)相手の手札が少ないか(1枚/0枚は特に狙い目)
+    //               序盤は(5)盤面占拠数トップの「有利プレイヤー」が絡まない下位同士の潰し合いを避ける（結果的に有利プレイヤーを助けるだけのため）
     function cpuDecideLapChallenge(challenger, targets) {
         const myEpoch = gameEpoch;
         const maxLaps = Math.max(...state.players.map(p => p.laps));
+
+        // 序盤かどうか(目標周回の1/3未満)と、盤面を最も広く占拠しているプレイヤー(=序盤の有利プレイヤー)を、
+        // 重い探索なしで軽量に判定する（盤面を1回走査するだけ）
+        const gameProgress = state.targetLaps > 0 ? maxLaps / state.targetLaps : 1;
+        const isEarlyGame = gameProgress < 0.34;
+        let boardLeaderId = null;
+        if (isEarlyGame) {
+            const ownedCounts = {};
+            state.players.forEach(p => { ownedCounts[p.id] = 0; });
+            state.board.forEach(cell => { if (cell && ownedCounts[cell.player] !== undefined) ownedCounts[cell.player]++; });
+            let maxOwned = -1;
+            state.players.forEach(p => {
+                if (ownedCounts[p.id] > maxOwned) { maxOwned = ownedCounts[p.id]; boardLeaderId = p.id; }
+            });
+        }
 
         // トッププレイヤーが優勝にどれだけ迫っているか（緊急度）。恨み度の重みや遠慮の判断に使う
         const lapsToWin = state.targetLaps - maxLaps;
@@ -2220,6 +2237,13 @@
         let bluffProb = challenger.hand.length <= 1 ? 0
             : challenger.hand.length === 2 ? 0.12
             : (score >= 5 ? 0.35 : 0.1);
+
+        // 序盤の下位同士回避: 自分も相手も盤面占拠トップ(有利プレイヤー)でないなら、
+        // その潰し合いは有利プレイヤーを利するだけなので、本気の攻撃・はったり共に控えめにする
+        if (isEarlyGame && boardLeaderId !== null && challenger.id !== boardLeaderId && target.id !== boardLeaderId) {
+            winAttemptProb *= 0.35;
+            bluffProb *= 0.35;
+        }
 
         // フリーライド回避: 同じマスに、自分より手札に余裕がありこの相手を狙えそうな味方(まだ判断前)がいるなら、
         // 先に行かせて自分は様子見する（ただしリーダーの優勝が目前の緊急時は遠慮しない）
