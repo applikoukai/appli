@@ -139,13 +139,13 @@
         <!-- アクション & メッセージパネル -->
         <div class="p-3 bg-slate-850 flex flex-col items-center gap-2">
             <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-2">
-                <button id="system-btn" onclick="openSystemModal()" class="shrink-0 px-3 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-200 text-sm font-bold rounded-lg border border-slate-600 transition-all shadow-md" title="システム設定">
+                <button id="system-btn" onclick="openSystemModal()" class="shrink-0 whitespace-nowrap px-3 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-200 text-sm font-bold rounded-lg border border-slate-600 transition-all shadow-md" title="システム設定">
                     ⚙ システム
                 </button>
-                <div id="log-text" class="text-xs text-slate-300 font-mono bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-800 w-full sm:w-3/4 truncate shadow-inner">
+                <div id="log-text" class="text-xs text-slate-300 font-mono bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-800 w-full sm:w-3/4 min-w-0 truncate shadow-inner">
                     ゲームスタート！カードを選んで攻撃してください。
                 </div>
-                <button id="end-turn-btn" onclick="manualEndTurn()" class="w-full sm:w-auto px-6 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-200 text-sm font-bold rounded-lg border border-slate-600 transition-all shadow-md">
+                <button id="end-turn-btn" onclick="manualEndTurn()" class="w-full sm:w-auto shrink-0 whitespace-nowrap px-6 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-200 text-sm font-bold rounded-lg border border-slate-600 transition-all shadow-md">
                     ターン終了
                 </button>
             </div>
@@ -191,26 +191,29 @@
                     <button id="system-tab-guide" onclick="switchSystemTab('guide')" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-blue-600 text-white">説明書</button>
                     <button id="system-tab-config" onclick="switchSystemTab('config')" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-slate-700 text-slate-300">数値設定</button>
                 </div>
-                <button id="config-reset-btn" onclick="resetConfigToDefault()" class="hidden px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold border border-slate-600 bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all">初期値に戻す</button>
+                <div id="config-top-actions" class="hidden flex gap-2 flex-wrap">
+                    <button id="config-reset-btn" onclick="resetConfigToDefault()" class="px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold border border-slate-600 bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all">初期値に戻す</button>
+                    <button onclick="applyConfig()" class="px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all">適用してリスタート</button>
+                </div>
             </div>
 
             <!-- 説明書 -->
             <div id="system-panel-guide" class="text-xs sm:text-sm text-slate-300 space-y-3 leading-relaxed">
                 <div>
                     <h3 class="font-bold text-slate-100 mb-1">基本の流れ</h3>
-                    <p>共有のカードプール(手札)から、重さ・勢いを持つカードを選んで相手の頭・胸・腹のいずれかを攻撃します。1ターンに使えるアクション数(⚡)ぶんだけ攻撃でき、使い切るか「ターン終了」で相手のターンに移ります。</p>
+                    <p>ファイターの上に表示される共有のカードプール(手札)からカードを選んで、相手の頭・胸・腹のいずれかを攻撃します。1ターンに使えるアクション数(⚡)分だけ攻撃でき、使い切るか「ターン終了」で相手のターンに移ります。なお、先攻1ターン目だけはアクション数が基本値の半分(端数切り上げ)になります。</p>
                 </div>
                 <div>
-                    <h3 class="font-bold text-slate-100 mb-1">カードとダメージ</h3>
-                    <p>「重さ」はそのままダメージになり、突き出している部位(重心より攻撃方向にある部位)ほど追加ダメージが入ります。「勢い」は一時へこみ値(相手の姿勢崩れ)に、ダメージ自体は永続へこみ値として蓄積し続けます。</p>
+                    <h3 class="font-bold text-slate-100 mb-1">ダメージとへこみ値</h3>
+                    <p>「重さ」はそのままダメージの基本値になり、突き出している部位(重心より攻撃側寄りにある部位)ほど大きなダメージが入ります。逆にへこんでいる部位へのダメージは小さくなります。ダメージは永続へこみ値と連動し、ダメージがあると姿勢が崩れ続けます。「勢い」はそのターン中のみ有効な一時へこみ値を大きく増やし、ダメージをサポートします。</p>
                 </div>
                 <div>
                     <h3 class="font-bold text-slate-100 mb-1">アクション追加</h3>
-                    <p>1回の攻撃で（初期設定では）4以上のダメージを与えるとアクション数(⚡)が追加されます。</p>
+                    <p>1回の攻撃で4以上のダメージを与えるとアクション数(⚡)が追加されます。数値は変更できます。</p>
                 </div>
                 <div>
                     <h3 class="font-bold text-slate-100 mb-1">見切り</h3>
-                    <p>攻撃を受けた部位には見切りカードが残り、同じ重さ・勢いのカードで再度その部位を狙うと威力が半減します。見切りカードの枚数には上限があり、超えると古いものから自動で外れます。腹へのダメージが蓄積するとこの上限が下がっていきます。</p>
+                    <p>攻撃を受けた部位には見切りカードが残り、同じ重さ・勢いのカードで再度その部位を狙うとダメージ基本値とへこみ値が半減します。見切りカードの枚数には上限があり、超えると古いものから自動で外れます。腹へのダメージが蓄積するとこの上限が下がっていきます。</p>
                 </div>
                 <div>
                     <h3 class="font-bold text-slate-100 mb-1">手札範囲</h3>
@@ -222,7 +225,7 @@
                 </div>
                 <div>
                     <h3 class="font-bold text-slate-100 mb-1">全力</h3>
-                    <p>自分のターン中、膝のそばのボタン(またはステータス行の「全力」ボタン)でON/OFFを切り替えられます。ONの間は攻撃力減衰が消え、手札範囲も最大になりますが、代わりに被弾ダメージが増加します。攻撃を1回でも行うとそのターンはOFFに戻せません。ONのまま相手ターンを迎えても効果は続き、自分の次のターン開始時に自動でOFFになります。</p>
+                    <p>自分のターン中に「全力」ボタンで全力ON/OFFを切り替えられます。ONの間は攻撃力減衰が消え、手札範囲も最大になりますが、代わりにダメージが増加します。増加ダメージは最終値に加算し、その数値でアクション数追加判定をします。攻撃を1回でも行うとそのターンはOFFに戻せません。次の自分のターン開始時にOFFになります。</p>
                 </div>
                 <div>
                     <h3 class="font-bold text-slate-100 mb-1">勝敗</h3>
@@ -315,7 +318,7 @@
             momentumSinkMultiplier: 4,   // 一時へこみ値：勢いの何倍を使うか
             zenryokuBonusDamage: 1,      // 全力ON中に追加で受けるダメージ(固定値)
             actionBonusThreshold: 4,     // このダメージ以上でアクション+1
-            positionBonusPerUnit: 6      // 重心からの突き出し量に対するダメージ倍率(0.25マスにつき1÷0.25=4)
+            positionBonusPerUnit: 6      // 重心からの突き出し量に対するダメージ倍率(1÷6マスにつき1)
         };
         const DEFAULT_CONFIG = { ...CONFIG }; // 「初期値に戻す」用の控え
 
@@ -509,6 +512,28 @@
                 return ((this.nodes[partIndex].x - avgX) * this.direction) / GRID_SIZE;
             }
 
+            // 指定部位に一時へこみ値(addedTempSink)が加わった場合の、収束後の突き出し量を頭・胸・腹すべて予測する
+            // (update()内の姿勢ターゲット計算式と同じ式を使い、スプリングが収束した先の状態を解析的に求める)
+            predictProtrusionAll(hitPartIndex, addedTempSink) {
+                const hypoSinks = [...this.displaySink];
+                hypoSinks[hitPartIndex] = Math.max(0, hypoSinks[hitPartIndex] + addedTempSink);
+
+                const total = hypoSinks[0] + hypoSinks[1] + hypoSinks[2];
+                const avgSink = total / 3;
+                const pushDir = -this.direction;
+                const maxOffsetX = GRID_SIZE * 1.5;
+
+                const xOffsets = hypoSinks.map(s => {
+                    const localSink = s - avgSink;
+                    let xOffset = (2 / Math.PI) * Math.atan(localSink / 12) * maxOffsetX * pushDir;
+                    xOffset += (2 / Math.PI) * Math.atan(avgSink / 15) * (GRID_SIZE * 1.6) * pushDir;
+                    return xOffset;
+                });
+                const avgXOffset = (xOffsets[0] + xOffsets[1] + xOffsets[2]) / 3;
+
+                return xOffsets.map(off => ((off - avgXOffset) * this.direction) / GRID_SIZE);
+            }
+
             resetNodes() {
                 const baseYs = [30, 95, 160, 235, 310];
                 this.nodes = [];
@@ -685,7 +710,7 @@
                     : (vsHumanMode && currentState === STATE.ENEMY_TURN);
                 const bonus = this.zenryokuBonusDamage;
                 const w = 66;
-                const h = this.zenryoku ? 32 : 26; // 枠内は「全力」＋状態表示のみに絞る
+                const h = this.zenryoku ? 38 : 30; // 枠内は「全力」＋状態表示のみに絞る（少し縦に伸ばす）
                 const x = pos.x - w / 2;
                 const y = pos.y - h / 2;
 
@@ -708,10 +733,10 @@
                 if (this.zenryoku) {
                     // ON中：枠内に「全力」／「ON」（＋ロック中なら鍵マーク）
                     ctx.fillStyle = '#1e293b';
-                    ctx.font = 'bold 13px sans-serif';
-                    ctx.fillText('全力', pos.x, y + 11);
+                    ctx.font = 'bold 16px sans-serif';
+                    ctx.fillText('全力', pos.x, y + 14);
                     ctx.font = 'bold 10px sans-serif';
-                    ctx.fillText(this.zenryokuLocked ? 'ON🔒' : 'ON', pos.x, y + 25);
+                    ctx.fillText(this.zenryokuLocked ? 'ON🔒' : 'ON', pos.x, y + 30);
 
                     // 「被ダメージ+X」は枠の外（下）に、「アクション」と同程度の文字サイズで表示
                     ctx.fillStyle = '#facc15';
@@ -720,12 +745,12 @@
                 } else {
                     // OFF中：枠内には「全力」のみ、「OFF」は枠の外（下）に小さく表示
                     ctx.fillStyle = '#e2e8f0';
-                    ctx.font = 'bold 13px sans-serif';
+                    ctx.font = 'bold 16px sans-serif';
                     ctx.fillText('全力', pos.x, pos.y);
 
                     ctx.fillStyle = '#94a3b8';
-                    ctx.font = 'bold 9px sans-serif';
-                    ctx.fillText('OFF', pos.x, y + h + 10);
+                    ctx.font = 'bold 16px sans-serif';
+                    ctx.fillText('OFF', pos.x, y + h + 15);
                 }
 
                 ctx.restore();
@@ -799,7 +824,27 @@
                     ctx.fillStyle = '#f8fafc';
                     ctx.textAlign = this.direction === 1 ? 'left' : 'right';
                     const labels = ["頭", "胸", "腹"];
-                    
+
+                    // 選択中のカード＋ホバー中の部位で、実際にこの相手を攻撃した場合の姿勢変化を予測する
+                    const isPlayerActing = currentState === STATE.PLAYER_TURN;
+                    const isEnemyHumanActing = vsHumanMode && currentState === STATE.ENEMY_TURN;
+                    const isThisTheDefender = (isPlayerActing && this === enemy) || (isEnemyHumanActing && this === player);
+
+                    let predictedProtrusions = null;
+                    if (isThisTheDefender && selectedCardIndex !== -1 && hoveredEnemyTarget !== -1) {
+                        const selectedCard = sharedHand[selectedCardIndex];
+                        let effMomentum = selectedCard.momentum;
+                        const existingMikiris = this.mikiriCards.filter(c => c.partIndex === hoveredEnemyTarget);
+                        for (const mc of existingMikiris) {
+                            if (mc.momentum === selectedCard.momentum && selectedCard.momentum > 0) {
+                                effMomentum = Math.floor(effMomentum * 0.5);
+                            }
+                        }
+                        const hitProtrusionBefore = this.getProtrusion(hoveredEnemyTarget);
+                        const addedTempSink = Math.round((effMomentum * CONFIG.momentumSinkMultiplier) * (1 + Math.max(0, hitProtrusionBefore) * 0.5));
+                        predictedProtrusions = this.predictProtrusionAll(hoveredEnemyTarget, addedTempSink);
+                    }
+
                     for (let i = 0; i < 3; i++) {
                         const textX = this.nodes[i].x + (this.direction * 68);
                         const textY = this.nodes[i].y + 4;
@@ -815,6 +860,24 @@
                         // 2行目：ダメージ数値（2倍サイズ）
                         ctx.font = 'bold 24px sans-serif';
                         ctx.fillText(`${this.accumulatedDamage[i]}`, textX, textY + 15);
+
+                        // 3行目：重心からの突き出しによる予想ダメージ補正（矢印＋数字、変化がある時は現在値→結果値を1行で）
+                        const posBonus = Math.round(this.getProtrusion(i) * CONFIG.positionBonusPerUnit);
+                        const predBonus = predictedProtrusions ? Math.round(predictedProtrusions[i] * CONFIG.positionBonusPerUnit) : null;
+                        const arrowOf = (v) => v > 0 ? '▲' : (v < 0 ? '▼' : '―');
+                        const signOf = (v) => v > 0 ? '+' : '';
+                        const colorOf = (v) => v > 0 ? '#f87171' : (v < 0 ? '#60a5fa' : '#94a3b8');
+
+                        if (predBonus !== null && predBonus !== posBonus) {
+                            ctx.font = 'bold 11px sans-serif';
+                            ctx.fillStyle = colorOf(posBonus);
+                            ctx.fillText(`${arrowOf(posBonus)}${signOf(posBonus)}${posBonus}→${arrowOf(predBonus)}${signOf(predBonus)}${predBonus}`, textX, textY + 30);
+                        } else if (posBonus !== 0) {
+                            const arrow = posBonus > 0 ? '▲' : '▼';
+                            ctx.fillStyle = posBonus > 0 ? '#f87171' : '#60a5fa';
+                            ctx.font = 'bold 12px sans-serif';
+                            ctx.fillText(`${arrow}${posBonus > 0 ? '+' : ''}${posBonus}`, textX, textY + 31);
+                        }
 
                         ctx.restore();
                     }
@@ -973,7 +1036,7 @@
                     ctx.fillRect(x, y, cardW, cardH);
                     ctx.strokeRect(x, y, cardW, cardH);
 
-                    ctx.font = 'bold 11px sans-serif';
+                    ctx.font = 'bold 13px sans-serif';
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'alphabetic';
 
@@ -981,11 +1044,11 @@
 
                     // 重さ表示
                     ctx.fillStyle = '#fca5a5';
-                    ctx.fillText(`重:${card.weight}`, x + 3, y + 20);
-                    
+                    ctx.fillText(`重:${card.weight}`, x + 1.5, y + 19);
+
                     // 勢い表示
                     ctx.fillStyle = '#93c5fd';
-                    ctx.fillText(`勢:${card.momentum}`, x + 3, y + 36);
+                    ctx.fillText(`勢:${card.momentum}`, x + 1.5, y + 38);
 
                     ctx.restore();
                 }
@@ -1108,10 +1171,10 @@
                 cardEl.innerHTML = `
                     ${(lockedIds && !inRange) ? '<div class="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow z-10">範囲外</div>' : ''}
                     <div class="flex flex-col gap-1 text-center w-full my-1">
-                        <div class="text-xs font-black text-red-400 bg-red-950/60 rounded py-0.5 border border-red-900/50 shadow-inner">
+                        <div class="text-sm sm:text-lg font-black text-red-400 bg-red-950/60 rounded py-0.5 border border-red-900/50 shadow-inner leading-tight">
                             重さ ${card.weight}
                         </div>
-                        <div class="text-xs font-black text-blue-400 bg-blue-950/60 rounded py-0.5 border border-blue-900/50 shadow-inner">
+                        <div class="text-sm sm:text-lg font-black text-blue-400 bg-blue-950/60 rounded py-0.5 border border-blue-900/50 shadow-inner leading-tight">
                             勢い ${card.momentum}
                         </div>
                     </div>
@@ -1716,6 +1779,7 @@
         function openSystemModal() {
             populateConfigForm();
             updateVsModeUI();
+            updateConfigResetButtonState();
             document.getElementById('system-modal').classList.remove('hidden');
         }
 
@@ -1734,7 +1798,7 @@
                     btn.className = "px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-slate-700 text-slate-300";
                 }
             });
-            document.getElementById('config-reset-btn').classList.toggle('hidden', tab !== 'config');
+            document.getElementById('config-top-actions').classList.toggle('hidden', tab !== 'config');
         }
 
         // 対戦モード切替行(タブの上、常に表示)の見た目を現在の状態に合わせる
@@ -1779,6 +1843,25 @@
             });
         }
 
+        // フォームの入力値がすべてデフォルトと一致しているかを見て、「初期値に戻す」ボタンの有効/無効を切り替える
+        function updateConfigResetButtonState() {
+            const btn = document.getElementById('config-reset-btn');
+            if (!btn) return;
+            let allDefault = true;
+            Object.keys(DEFAULT_CONFIG).forEach(key => {
+                const input = document.getElementById(`config-${key}`);
+                if (!input) return;
+                const val = parseFloat(input.value);
+                if (isNaN(val) || val !== DEFAULT_CONFIG[key]) {
+                    allDefault = false;
+                }
+            });
+            btn.disabled = allDefault;
+            btn.classList.toggle('opacity-40', allDefault);
+            btn.classList.toggle('cursor-not-allowed', allDefault);
+            btn.classList.toggle('hover:bg-slate-600', !allDefault);
+        }
+
         function applyConfig() {
             Object.keys(CONFIG).forEach(key => {
                 const input = document.getElementById(`config-${key}`);
@@ -1806,13 +1889,14 @@
             logMessage("設定を反映して新しい試合を開始しました。", "text-cyan-400");
         }
 
+        // フォームの入力値を初期値表示に戻すだけ（実際に反映されるのは「適用してリスタート」を押したとき）
         function resetConfigToDefault() {
-            CONFIG = { ...DEFAULT_CONFIG };
-            populateConfigForm();
-            regenerateCardTypes();
-            closeSystemModal();
-            resetGame();
-            logMessage("数値設定を初期値に戻して新しい試合を開始しました。", "text-cyan-400");
+            Object.keys(DEFAULT_CONFIG).forEach(key => {
+                const input = document.getElementById(`config-${key}`);
+                if (input) input.value = DEFAULT_CONFIG[key];
+            });
+            updateConfigResetButtonState();
+            logMessage("数値設定の入力欄を初期値に戻しました。「適用してリスタート」を押すと反映されます。", "text-cyan-400");
         }
 
         function resetGame() {
@@ -1845,6 +1929,10 @@
         window.addEventListener('load', () => {
             initGame();
             setupEventListeners(); // キャンバスへのイベント登録は最初の1回だけでよい(reset時の重複登録防止)
+            const configForm = document.getElementById('config-form');
+            if (configForm) {
+                configForm.addEventListener('input', updateConfigResetButtonState);
+            }
             gameLoop();
         });
     </script>
