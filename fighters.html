@@ -273,7 +273,7 @@
                         <input id="config-actionBonusThreshold" type="number" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100">
                     </label>
                     <label class="flex flex-col gap-1">重心補正(0.25マスにつき+この値)
-                        <input id="config-positionBonusPerUnit" type="number" step="0.1" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100">
+                        <input id="config-positionBonusPerUnit" type="number" step="1" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100">
                     </label>
                 </div>
                 <button onclick="applyConfig()" class="w-full mt-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-lg transition-all shadow-lg">
@@ -315,7 +315,7 @@
             momentumSinkMultiplier: 4,   // 一時へこみ値：勢いの何倍を使うか
             zenryokuBonusDamage: 1,      // 全力ON中に追加で受けるダメージ(固定値)
             actionBonusThreshold: 4,     // このダメージ以上でアクション+1
-            positionBonusPerUnit: 4      // 重心からの突き出し量に対するダメージ倍率(0.25マスにつき1÷0.25=4)
+            positionBonusPerUnit: 6      // 重心からの突き出し量に対するダメージ倍率(0.25マスにつき1÷0.25=4)
         };
         const DEFAULT_CONFIG = { ...CONFIG }; // 「初期値に戻す」用の控え
 
