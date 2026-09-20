@@ -185,7 +185,7 @@
                 <div id="contentInstructions" class="p-6 overflow-y-auto text-slate-300 space-y-6 text-sm md:text-base hidden">
                     <section>
                         <h3 class="text-lg font-bold text-blue-400 mb-2 border-b border-blue-400/30 pb-1 flex items-center gap-2">🎯 目的</h3>
-                        <p class="leading-relaxed">制限時間内に、下部にある荷物をドラッグして、上部のスーツケースにできるだけ無駄なく詰め込みましょう！</p>
+                        <p class="leading-relaxed">制限時間内に、下部にある荷物をドラッグして、上部のスーツケースに詰め込みましょう！</p>
                     </section>
                     
                     <section>
@@ -1035,7 +1035,7 @@
                     // 最小値を 1 にすることで、時間が短くてもスコアが増倍されない（最大で /1 になる）ようにする
                     const timeDivisor = Math.max(1, effectiveTime * 0.5);
                     
-                    const base = 10 * cells;
+                    const base = 100 * cells;
                     const term1 = (base * 5) / stages;
                     const term2 = ((base * 5) / timeDivisor) / stages;
                     rankScore = Math.floor(term1 + term2);
