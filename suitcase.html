@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>荷物を詰め込むゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #gameWrapper {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            /* ノッチ / ホームインジケーターとUIが重ならないようにする */
+            padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        }
+        canvas {
+            display: block;
+            touch-action: none;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border-radius: 28px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameWrapper">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- ヘッダー右上の設定ボタン (ゲーム中) -->
+        <button type="button" id="settingsBtn" class="absolute top-4 right-4 z-[150] w-12 h-12 bg-slate-800/80 text-white rounded-full justify-center items-center font-bold text-2xl border border-slate-600 shadow-md hover:bg-slate-700 transition-colors" style="touch-action:manipulation; display: none;">
+            ⚙️
+        </button>
+ 
+        <div id="actionButtonsContainer" class="absolute top-[42%] -translate-y-1/2 left-4 md:left-6 flex flex-col gap-4 z-[100]" style="pointer-events:auto;">
+            <button type="button" id="promoteBtn" style="touch-action:manipulation; pointer-events:auto; display:none;" class="bg-amber-500 text-white font-bold py-4 px-5 rounded-2xl shadow-[0_10px_20px_rgba(245,158,11,0.4)] border-2 border-amber-400 active:scale-90 transition-all items-center justify-center text-lg opacity-50 cursor-not-allowed">
+                🎖️ 昇格 (0/5)
+            </button>
+            <button type="button" id="compressBtn" style="touch-action:manipulation; pointer-events:auto; display:none;" class="bg-slate-800 text-white font-bold py-4 px-5 rounded-2xl shadow-[0_10px_20px_rgba(0,0,0,0.3)] border-2 border-slate-600 active:scale-90 transition-transform items-center justify-center text-lg">
+                <span>👇</span><span class="actionBtnLabel"> 押し込む</span>
+            </button>
+            <button type="button" id="sendBtn" style="touch-action:manipulation; pointer-events:auto; display:none;" class="bg-blue-600 text-white font-bold py-4 px-5 rounded-2xl shadow-[0_10px_20px_rgba(37,99,235,0.4)] border-2 border-blue-500 active:scale-90 transition-transform items-center justify-center text-lg">
+                <span>📦</span><span class="actionBtnLabel"> 送る</span>
+            </button>
+        </div>
+ 
+        <div id="startScreen" class="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-md text-white transition-opacity duration-500">
+            <h1 class="text-5xl font-extrabold mb-6 tracking-tight text-center leading-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+                荷物を詰め込む<br>ゲーム
+            </h1>
+            <div class="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 mb-8 shadow-2xl max-w-sm text-center">
+                <p class="text-slate-300 leading-relaxed mb-4">
+                    時間内に荷物をドラッグして<br>スーツケースに詰め込もう！
+                </p>
+                <p class="text-sm text-slate-400 text-left list-disc list-inside">
+                    ・枠外からドラッグで移動<br>
+                    ・タップで回転<br>
+                    ・入りきらない時は「押し込む」！
+                </p>
+            </div>
+            
+            <div class="mb-8 flex flex-col items-center gap-2">
+                <label for="gridSizeSelect" class="text-sm font-bold text-blue-300">📐 盤面サイズを選択:</label>
+                <select id="gridSizeSelect" class="bg-slate-900 text-white font-bold py-3 px-6 rounded-xl border-2 border-slate-600 focus:outline-none focus:border-blue-500 w-full max-w-xs transition-colors text-lg text-center cursor-pointer">
+                    <option value="4,4" selected>4 × 4</option>
+                    <option value="5,4">4 × 5</option>
+                    <option value="5,5">5 × 5</option>
+                    <option value="7,4">4 × 7</option>
+                    <option value="6,5">5 × 6</option>
+                    <option value="6,6">6 × 6</option>
+                    <option value="7,6">6 × 7</option>
+                    <option value="7,7">7 × 7</option>
+                </select>
+                <div id="rankDisplay" class="text-base font-bold text-amber-400 mt-1">👔 アルバイト</div>
+            </div>
+ 
+            <div class="flex gap-3 sm:gap-4 flex-wrap justify-center px-4">
+                <button type="button" id="startBtn" class="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 px-6 sm:py-5 sm:px-10 rounded-full shadow-[0_10px_30px_rgba(37,99,235,0.5)] border-4 border-blue-400/50 active:scale-95 transition-all text-xl sm:text-2xl flex items-center gap-3">
+                    <span>▶ プレイ開始</span>
+                </button>
+                <button type="button" id="openConfigBtnStart" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-5 sm:py-5 sm:px-6 rounded-full shadow-lg border-4 border-slate-500/50 active:scale-95 transition-all text-xl sm:text-2xl flex items-center justify-center gap-2" aria-label="設定">
+                    ⚙️ <span class="text-base sm:text-lg">設定</span>
+                </button>
+            </div>
+        </div>
+ 
+        <div id="gameOverScreen" class="absolute inset-0 z-[300] hidden flex-col items-center justify-center bg-slate-900/95 backdrop-blur-md text-white transition-opacity duration-500 opacity-0">
+            <h1 class="text-6xl font-extrabold mb-4 tracking-tight text-center text-red-500">
+                GAME OVER
+            </h1>
+            <p class="text-xl text-slate-300 mb-4 text-center leading-relaxed">
+                不満度が限界に達しました。<br>
+                <span class="text-slate-400 text-sm">最終役職: <span id="finalRank" class="font-bold text-amber-400 text-lg"></span></span><br>
+                <span class="text-slate-400 text-sm">最終到達ステージ: <span id="finalStage" class="font-bold text-white text-lg"></span></span><br>
+                <span class="text-slate-400 text-sm">総発送マス: <span id="finalScore" class="font-bold text-white text-lg"></span></span><br>
+                <span class="text-slate-400 text-sm">総プレイ時間: <span id="finalTime" class="font-bold text-white text-lg"></span></span><br>
+                <span class="text-slate-400 text-sm">給料: <span id="finalEvaluation" class="font-bold text-emerald-400 text-2xl"></span></span>
+            </p>
+ 
+            <!-- 役職別リザルト表示エリア -->
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-700 mb-8 max-w-sm w-full text-left max-h-50 overflow-y-auto">
+                <h3 class="text-sm font-bold text-blue-300 mb-2 border-b border-slate-600 pb-1">役職別リザルト</h3>
+                <ul id="rankResultList" class="text-sm text-slate-300 space-y-2">
+                    <!-- JavaScriptで動的に追加されます -->
+                </ul>
+            </div>
+ 
+            <button type="button" id="restartBtn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-10 rounded-full shadow-[0_10px_30px_rgba(220,38,38,0.5)] border-4 border-red-400/50 active:scale-95 transition-all text-xl">
+                最初からやり直す
+            </button>
+        </div>
+ 
+        <!-- 設定・説明書モーダル -->
+        <div id="configModal" class="absolute inset-0 z-[400] hidden flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm transition-opacity duration-300 opacity-0 px-4">
+            <div class="bg-slate-800 rounded-2xl border-2 border-slate-600 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden relative">
+                <div class="bg-slate-700 flex flex-col shrink-0">
+                    <div class="p-4 border-b border-slate-600 flex justify-between items-center">
+                        <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                            ⚙️ 設定 / 遊び方
+                        </h2>
+                        <button type="button" id="closeConfigBtn" class="text-slate-400 hover:text-white transition-colors p-1" aria-label="閉じる">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                    <!-- タブ -->
+                    <div class="flex border-b border-slate-600">
+                        <button id="tabConfig" class="flex-1 py-3 font-bold text-blue-400 border-b-2 border-blue-400 bg-slate-800/50 transition-colors">⚙️ 設定</button>
+                        <button id="tabInstructions" class="flex-1 py-3 font-bold text-slate-400 border-b-2 border-transparent hover:bg-slate-800/30 transition-colors">📖 遊び方</button>
+                    </div>
+                </div>
+ 
+                <!-- 設定タブコンテンツ -->
+                <div id="contentConfig" class="p-6 overflow-y-auto text-slate-300 space-y-6 text-sm md:text-base">
+                    <div class="flex flex-col gap-2 items-center">
+                        <label class="text-sm font-bold text-blue-300">🕹️ アクションボタンの位置:</label>
+                        <div id="buttonPositionToggle" class="toggle-group inline-flex bg-slate-900 rounded-xl border border-slate-600 p-1 w-full max-w-xs">
+                            <button type="button" data-value="left" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">左側</button>
+                            <button type="button" data-value="right" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">右側</button>
+                        </div>
+                    </div>
+ 
+                    <div class="flex flex-col gap-2 items-center border-t border-slate-700 pt-6 mt-2">
+                        <label class="text-sm font-bold text-blue-300">⏱️ タイマーの位置:</label>
+                        <div id="timerPositionToggle" class="toggle-group inline-flex bg-slate-900 rounded-xl border border-slate-600 p-1 w-full max-w-xs">
+                            <button type="button" data-value="left" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">左側</button>
+                            <button type="button" data-value="right" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">右側</button>
+                        </div>
+                    </div>
+ 
+                    <div class="flex flex-col gap-2 items-center border-t border-slate-700 pt-6 mt-2">
+                        <label class="text-sm font-bold text-blue-300">📏 アクションボタンの大きさ:</label>
+                        <div id="buttonSizeToggle" class="toggle-group inline-flex bg-slate-900 rounded-xl border border-slate-600 p-1 w-full max-w-xs">
+                            <button type="button" data-value="normal" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">通常</button>
+                            <button type="button" data-value="compact" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">コンパクト</button>
+                        </div>
+                        <p class="text-xs text-slate-400 text-center max-w-xs">操作に慣れたら「コンパクト」にすると、ボタンの横幅を小さくできます。</p>
+                    </div>
+                </div>
+ 
+ 
+                <!-- 遊び方タブコンテンツ -->
+                <div id="contentInstructions" class="p-6 overflow-y-auto text-slate-300 space-y-6 text-sm md:text-base hidden">
+                    <section>
+                        <h3 class="text-lg font-bold text-blue-400 mb-2 border-b border-blue-400/30 pb-1 flex items-center gap-2">🎯 目的</h3>
+                        <p class="leading-relaxed">制限時間内に、下部にある荷物をドラッグして、上部のスーツケースにできるだけ無駄なく詰め込みましょう！</p>
+                    </section>
+                    
+                    <section>
+                        <h3 class="text-lg font-bold text-emerald-400 mb-2 border-b border-emerald-400/30 pb-1 flex items-center gap-2">🎮 基本操作</h3>
+                        <ul class="list-disc list-inside space-y-2 ml-1">
+                            <li><strong class="text-white">移動:</strong> 荷物をドラッグ＆ドロップ</li>
+                            <li><strong class="text-white">回転:</strong> 枠外にある荷物をタップ（クリック）</li>
+                        </ul>
+                    </section>
+ 
+                    <section>
+                        <h3 class="text-lg font-bold text-amber-400 mb-2 border-b border-amber-400/30 pb-1 flex items-center gap-2">👇 押し込む</h3>
+                        <p class="leading-relaxed">どうしても入りきらない時は「押し込む」ボタンを使います。荷物を下に圧縮して無理やりスペースを作ります。</p>
+                    </section>
+                    
+                    <section>
+                        <h3 class="text-lg font-bold text-red-400 mb-2 border-b border-red-400/30 pb-1 flex items-center gap-2">😡 不満度とゲームオーバー</h3>
+                        <p class="leading-relaxed">以下の条件で「不満度」が溜まり、<strong>50に達するとゲームオーバー</strong>になります。</p>
+                        
+                        <div class="mt-3 grid grid-cols-2 gap-3 text-xs md:text-sm">
+                            <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-700 shadow-inner">
+                                <h4 class="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1 text-center">積み残し数 → 不満度</h4>
+                                <ul class="space-y-1 text-center text-slate-300">
+                                    <li>1個 → <span class="text-red-400 font-bold">2</span></li>
+                                    <li>2個 → <span class="text-red-400 font-bold">5</span></li>
+                                    <li>3個 → <span class="text-red-400 font-bold">10</span></li>
+                                    <li>4個 → <span class="text-red-400 font-bold">17</span></li>
+                                    <li>5個 → <span class="text-red-400 font-bold">26</span></li>
+                                </ul>
+                            </div>
+                            <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-700 shadow-inner">
+                                <h4 class="font-bold text-slate-200 mb-1.5 border-b border-slate-700 pb-1 text-center">押し込み回数 → 不満度</h4>
+                                <ul class="space-y-1 text-center text-slate-300">
+                                    <li>1回 → <span class="text-orange-400 font-bold">1</span></li>
+                                    <li>2回 → <span class="text-orange-400 font-bold">2</span></li>
+                                    <li>3回 → <span class="text-orange-400 font-bold">4</span></li>
+                                    <li>4回 → <span class="text-orange-400 font-bold">7</span></li>
+                                    <li>5回 → <span class="text-orange-400 font-bold">11</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+ 
+                    <section>
+                        <h3 class="text-lg font-bold text-purple-400 mb-2 border-b border-purple-400/30 pb-1 flex items-center gap-2">🎖️ 昇格システム</h3>
+                        <p class="leading-relaxed">荷物を規定回数「送る」と「昇格」ボタンが光ります。ボタンを押すと昇格が予約され、次のステージから<strong>盤面が広く</strong>なり、役職が上がります。</p>
+                    </section>
+                </div>
+ 
+                <div class="bg-slate-900 p-4 border-t border-slate-700 shrink-0 flex items-center justify-center gap-3">
+                    <button type="button" id="resetToTitleBtn" style="display:none;" class="bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-3 px-4 rounded-full border-2 border-slate-600 transition-all text-sm shrink-0 whitespace-nowrap">
+                        🏠 タイトルに戻る
+                    </button>
+                    <button type="button" id="closeConfigBtnBottom" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full shadow-lg border-2 border-blue-500 transition-all text-lg w-full max-w-xs">
+                        閉じる
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+ 
+    <script>
+        const RANKS = [
+            { name: "アルバイト", cols: 4, rows: 4 },
+            { name: "平社員", cols: 5, rows: 4 },
+            { name: "主任", cols: 5, rows: 5 },
+            { name: "係長", cols: 7, rows: 4 },
+            { name: "課長", cols: 6, rows: 5 },
+            { name: "部長", cols: 6, rows: 6 },
+            { name: "常務", cols: 7, rows: 6 },
+            { name: "専務", cols: 7, rows: 7 },
+            { name: "社長", cols: 8, rows: 8 },
+            { name: "会長", cols: 9, rows: 9 }
+        ];
+ 
+        let currentRankIndex = 0;
+        let shippedCount = 0;
+        const REQUIRE_SHIPPED_COUNT = 4;
+        const CONSUME_SHIPPED_COUNT = 5;
+        let isPromotionReserved = false;
+ 
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+ 
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 1050;
+ 
+        // 高DPI(Retina)端末でもキャンバスがぼやけないように、
+        // 実ピクセル解像度をdevicePixelRatio倍にし、描画座標系は
+        // これまで通りGAME_WIDTH×GAME_HEIGHTのまま使えるようスケールする
+        const DPR = Math.min(window.devicePixelRatio || 1, 3);
+        canvas.width = GAME_WIDTH * DPR;
+        canvas.height = GAME_HEIGHT * DPR;
+        ctx.scale(DPR, DPR);
+ 
+        let scaleFactor = 1;
+        let canvasRect = { left: 0, top: 0, width: GAME_WIDTH, height: GAME_HEIGHT };
+ 
+        function resizeCanvas() {
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            const aspect = GAME_WIDTH / GAME_HEIGHT;
+            
+            let displayWidth, displayHeight;
+ 
+            if (windowWidth / windowHeight < aspect) {
+                displayWidth = windowWidth * 0.96;
+                displayHeight = displayWidth / aspect;
+            } else {
+                displayHeight = windowHeight * 0.96;
+                displayWidth = displayHeight * aspect;
+            }
+ 
+            canvas.style.width = `${displayWidth}px`;
+            canvas.style.height = `${displayHeight}px`;
+            canvasRect = canvas.getBoundingClientRect();
+            scaleFactor = GAME_WIDTH / displayWidth;
+        }
+ 
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', resizeCanvas);
+ 
+        let GRID_COLS = 6;
+        let GRID_ROWS = 6; 
+        const CELL_SIZE = 75; 
+        let GRID_START_X = (GAME_WIDTH - GRID_COLS * CELL_SIZE) / 2;
+        let GRID_START_Y = 130; 
+ 
+        let currentGridOffsetY = GRID_START_Y;
+        let INITIAL_GRID_ROWS = 6;
+        const BASE_SUITCASE_HEIGHT = 450; 
+        let currentSuitcaseHeight = BASE_SUITCASE_HEIGHT;
+        let currentCellHeight = CELL_SIZE; 
+ 
+        const INVENTORY_SCALE = 0.45;
+        const inventoryCols = [180, 400, 620]; 
+        let inventoryRows = [670, 795, 920]; 
+        const SLOT_WIDTH = 200;
+        const SLOT_HEIGHT = 110;
+ 
+        const oldContentCanvas = document.createElement('canvas');
+        oldContentCanvas.width = GAME_WIDTH;
+        oldContentCanvas.height = GAME_HEIGHT;
+        const nextContentCanvas = document.createElement('canvas');
+        nextContentCanvas.width = GAME_WIDTH;
+        nextContentCanvas.height = GAME_HEIGHT;
+ 
+        let isTransitioning = false;
+        let transitionProgress = 0;
+        const TIME_LIMIT = 30; 
+        let timeLeft = TIME_LIMIT;
+        let lastTime = 0;
+        let stageLevel = 1;
+ 
+// 縦タイマーバー
+        let timerBarX = 0;
+        let timerBarY = 0;
+        let timerPosition = 'left';
+        let buttonSize = 'normal';
+        const TIMER_BAR_WIDTH = 18;
+        const TIMER_BAR_HEIGHT = 300;
+        const TIMER_BAR_GAP = 16;
+ 
+        let isGameStarted = false;
+        let isGameOver = false;
+        let isPaused = false;
+ 
+        let totalDissatisfaction = 0; 
+        let stageCrushCount = 0; 
+        let totalScore = 0;
+        let totalElapsedTime = 0;
+        let rankPlayTimes = [];
+        let rankShippedCells = [];
+        let rankClearedStages = [];
+ 
+        const PIECE_COLORS = ["#EF4444", "#F59E0B", "#84CC16", "#06B6D4", "#8B5CF6", "#F97316", "#3B82F6", "#EC4899", "#10B981"];
+ 
+        function getPieceCountForSize(cols, rows) {
+            const total = cols * rows;
+            if (total <= 16) return 4;
+            if (total <= 20) return 5;
+            if (total <= 25) return 6;
+            if (total <= 30) return 7;
+            if (total <= 35) return 8;
+            return 9;
+        }
+ 
+        // ★ 4x4用の規定の切り分けから生成する関数
+        function generatePresetShapes4x4() {
+            // 4x4(16マス)を4つのブロックに分けたパターンを複数用意
+            const presets = [
+                // パターン1: 入り組んだ形
+                ["0001", "0011", "2213", "2233"],
+                // パターン2: 長いピースとブロック
+                ["0000", "1112", "3122", "3332"],
+                // パターン3: L字とT字の組み合わせ
+                ["0011", "0221", "2231", "2333"],
+                // パターン4: 斜めに噛み合う
+                ["0001", "2011", "2221", "3333"],
+                // パターン5: テトリス風
+                ["0000", "1122", "1223", "1333"],
+                // パターン6: 5マスのブロックを含む
+                ["0011", "2013", "2233", "2233"],
+                // パターン7: バランス型
+                ["0001", "0211", "2231", "2333"],
+                // パターン8: 少し複雑な噛み合い
+                ["0111", "0021", "3022", "3332"]
+            ];
+ 
+            // プリセットからランダムに1つ選ぶ
+            const selected = presets[Math.floor(Math.random() * presets.length)];
+            let shapes = [[], [], [], []];
+            
+            // 文字列から座標に変換
+            for (let y = 0; y < 4; y++) {
+                for (let x = 0; x < 4; x++) {
+                    const id = parseInt(selected[y][x]);
+                    shapes[id].push([x, y]);
+                }
+            }
+ 
+            let definitions = [];
+            let colors = [...PIECE_COLORS];
+            
+            // 配列シャッフル用ヘルパー
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+            
+            shuffle(colors);
+            
+            for (let id = 0; id < 4; id++) {
+                let cells = shapes[id];
+                
+                // 初期状態を正規化してサイズを確認
+                let minX = Math.min(...cells.map(c => c[0]));
+                let minY = Math.min(...cells.map(c => c[1]));
+                let normalizedCells = cells.map(c => [c[0] - minX, c[1] - minY]);
+                
+                let maxC = Math.max(...normalizedCells.map(c => c[0]));
+                let maxR = Math.max(...normalizedCells.map(c => c[1]));
+                
+                if (maxC < maxR) {
+                    // 縦長の場合、90度または270度回転させて横長にする
+                    let rot = Math.random() < 0.5 ? 1 : 3;
+                    for(let i = 0; i < rot; i++) {
+                        normalizedCells = normalizedCells.map(([c, r]) => [-r, c]);
+                    }
+                } else if (maxC > maxR) {
+                    // 既に横長の場合、そのままか180度回転させる
+                    if (Math.random() < 0.5) {
+                        normalizedCells = normalizedCells.map(([c, r]) => [-c, -r]);
+                    }
+                } else {
+                    // 縦横が等しい場合は4方向ランダム
+                    let rot = Math.floor(Math.random() * 4);
+                    for(let i = 0; i < rot; i++) {
+                        normalizedCells = normalizedCells.map(([c, r]) => [-r, c]);
+                    }
+                }
+                
+                // 回転後、左上が(0,0)になるように再正規化
+                minX = Math.min(...normalizedCells.map(c => c[0]));
+                minY = Math.min(...normalizedCells.map(c => c[1]));
+                normalizedCells = normalizedCells.map(c => [c[0] - minX, c[1] - minY]);
+ 
+                definitions.push({ cells: normalizedCells, color: colors[id] });
+            }
+            
+            // ★ 配置順(インベントリに入る順番)をシャッフル
+            shuffle(definitions);
+            return definitions;
+        }
+ 
+        function generateRandomShapes(cols, rows, pieceCount) {
+            // ★ 4x4の場合は規定のプリセットから生成
+            if (cols === 4 && rows === 4) {
+                return generatePresetShapes4x4();
+            }
+ 
+            const tempGrid = Array(rows).fill(null).map(() => Array(cols).fill(-1));
+            const shapes = Array(pieceCount).fill(null).map(() => []);
+            
+            const gridDivCol = Math.ceil(Math.sqrt(pieceCount));
+            const gridDivRow = Math.ceil(pieceCount / gridDivCol);
+            const blockCols = cols / gridDivCol;
+            const blockRows = rows / gridDivRow;
+            
+            let pieceId = 0;
+            for (let r = 0; r < gridDivRow; r++) {
+                for (let c = 0; c < gridDivCol; c++) {
+                    if (pieceId >= pieceCount) break;
+                    let seedR = Math.min(rows - 1, Math.floor(r * blockRows + Math.random() * blockRows));
+                    let seedC = Math.min(cols - 1, Math.floor(c * blockCols + Math.random() * blockCols));
+                    if (tempGrid[seedR][seedC] === -1) {
+                        tempGrid[seedR][seedC] = pieceId;
+                        shapes[pieceId].push([seedC, seedR]);
+                        pieceId++;
+                    }
+                }
+            }
+ 
+            for (let id = 0; id < pieceCount; id++) {
+                if (shapes[id].length === 0) {
+                    for (let y = 0; y < rows; y++) {
+                        for (let x = 0; x < cols; x++) {
+                            if (tempGrid[y][x] === -1) {
+                                tempGrid[y][x] = id;
+                                shapes[id].push([x, y]);
+                                break;
+                            }
+                        }
+                        if (shapes[id].length > 0) break;
+                    }
+                }
+            }
+            
+            let unassigned = cols * rows - pieceCount;
+            let activePieces = [...Array(pieceCount).keys()];
+            
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+            
+            while (unassigned > 0) {
+                shuffle(activePieces);
+                let expandedAny = false;
+                
+                for (let id of activePieces) {
+                    let candidates = [];
+                    for (let cell of shapes[id]) {
+                        let dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+                        for (let dir of dirs) {
+                            let nx = cell[0] + dir[0], ny = cell[1] + dir[1];
+                            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && tempGrid[ny][nx] === -1) {
+                                if (!candidates.some(c => c[0] === nx && c[1] === ny)) {
+                                    candidates.push([nx, ny]);
+                                }
+                            }
+                        }
+                    }
+                    if (candidates.length > 0) {
+                        let chosen = candidates[Math.floor(Math.random() * candidates.length)];
+                        tempGrid[chosen[1]][chosen[0]] = id;
+                        shapes[id].push(chosen);
+                        unassigned--;
+                        expandedAny = true;
+                    }
+                }
+                
+                if (!expandedAny && unassigned > 0) {
+                    for (let y = 0; y < rows; y++) {
+                        for (let x = 0; x < cols; x++) {
+                            if (tempGrid[y][x] === -1) {
+                                let dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+                                let neighborId = -1;
+                                for (let dir of dirs) {
+                                    let nx = x + dir[0], ny = y + dir[1];
+                                    if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && tempGrid[ny][nx] !== -1) {
+                                        neighborId = tempGrid[ny][nx]; break;
+                                    }
+                                }
+                                if (neighborId !== -1) {
+                                    tempGrid[y][x] = neighborId;
+                                    shapes[neighborId].push([x, y]);
+                                    unassigned--;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            let definitions = [];
+            let colors = [...PIECE_COLORS];
+            shuffle(colors);
+            
+            for (let id = 0; id < pieceCount; id++) {
+                let cells = shapes[id];
+                let minX = Math.min(...cells.map(c => c[0]));
+                let minY = Math.min(...cells.map(c => c[1]));
+                let normalizedCells = cells.map(c => [c[0] - minX, c[1] - minY]);
+                
+                let maxC = Math.max(...normalizedCells.map(c => c[0]));
+                let maxR = Math.max(...normalizedCells.map(c => c[1]));
+                
+                if (maxC < maxR) {
+                    let rot = Math.random() < 0.5 ? 1 : 3;
+                    for(let i = 0; i < rot; i++) {
+                        normalizedCells = normalizedCells.map(([c, r]) => [-r, c]);
+                    }
+                } else if (maxC > maxR) {
+                    if (Math.random() < 0.5) {
+                        normalizedCells = normalizedCells.map(([c, r]) => [-c, -r]);
+                    }
+                } else {
+                    let rot = Math.floor(Math.random() * 4);
+                    for(let i = 0; i < rot; i++) {
+                        normalizedCells = normalizedCells.map(([c, r]) => [-r, c]);
+                    }
+                }
+                
+                minX = Math.min(...normalizedCells.map(c => c[0]));
+                minY = Math.min(...normalizedCells.map(c => c[1]));
+                normalizedCells = normalizedCells.map(c => [c[0] - minX, c[1] - minY]);
+ 
+                definitions.push({ cells: normalizedCells, color: colors[id] });
+            }
+            
+            shuffle(definitions);
+            return definitions;
+        }
+ 
+        let grid = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(null));
+        let pieces = [];
+        let draggedPiece = null;
+        let isDragMoved = false;
+        let dragStartPos = { x: 0, y: 0 };
+ 
+        function drawRoundedRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        }
+ 
+        class Piece {
+            constructor(id, definition, slotIndex) {
+                this.id = id;
+                this.cells = definition.cells;
+                this.color = definition.color;
+                this.slotIndex = slotIndex;
+ 
+                let c = slotIndex % 3;
+                let r = Math.floor(slotIndex / 3);
+                this.slotCenterX = inventoryCols[c];
+                this.slotCenterY = inventoryRows[r];
+ 
+                this.calculateBounds();
+                this.isPlaced = false;
+                this.isDragging = false;
+                this.isCrushed = false;
+                this.crushLevel = 0;
+                this.gridX = -1;
+                this.gridY = -1;
+ 
+                this.updateSlotTarget();
+                this.x = this.targetX;
+                this.y = this.targetY;
+                this.scale = INVENTORY_SCALE;
+                this.targetScale = INVENTORY_SCALE;
+                this.dragOffsetX = 0;
+                this.dragOffsetY = 0;
+                this.wobbleTimer = 0;
+            }
+ 
+            calculateBounds() {
+                let maxCol = 0, maxRow = 0;
+                for (let c of this.cells) {
+                    if (c[0] > maxCol) maxCol = c[0];
+                    if (c[1] > maxRow) maxRow = c[1];
+                }
+                this.cols = maxCol + 1;
+                this.rows = maxRow + 1;
+            }
+ 
+            getRotatedCells() {
+                let rotated = this.cells.map(([c, r]) => [-r, c]);
+                let minC = Math.min(...rotated.map(c => c[0]));
+                let minR = Math.min(...rotated.map(c => c[1]));
+                return rotated.map(([c, r]) => [c - minC, r - minR]);
+            }
+ 
+            rotate() {
+                this.cells = this.getRotatedCells();
+                this.calculateBounds();
+                this.updateSlotTarget();
+            }
+ 
+            tryRotateOnGrid() {
+                let newCells = this.getRotatedCells();
+                let maxC = 0, maxR = 0;
+                for (let c of newCells) {
+                    if (c[0] > maxC) maxC = c[0];
+                    if (c[1] > maxR) maxR = c[1];
+                }
+ 
+                let canFit = true;
+                for (let cell of newCells) {
+                    let gx = this.gridX + cell[0];
+                    let gy = this.gridY + cell[1];
+                    if (gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS || (grid[gy][gx] !== null && grid[gy][gx] !== this.id)) {
+                        canFit = false; break;
+                    }
+                }
+ 
+                if (canFit) {
+                    this.cells = newCells;
+                    this.calculateBounds();
+                    return true;
+                } else {
+                    this.wobbleTimer = 15;
+                    return false;
+                }
+            }
+ 
+            updateSlotTarget() {
+                if (!this.isPlaced && !this.isDragging) {
+                    this.targetX = this.slotCenterX - (this.cols * CELL_SIZE * INVENTORY_SCALE) / 2;
+                    this.targetY = this.slotCenterY - (this.rows * CELL_SIZE * INVENTORY_SCALE) / 2;
+                    this.targetScale = INVENTORY_SCALE;
+                }
+            }
+ 
+            update() {
+                if (this.wobbleTimer > 0) this.wobbleTimer--;
+                if (!this.isDragging) {
+                    this.x += (this.targetX - this.x) * 0.3;
+                    this.y += (this.targetY - this.y) * 0.3;
+                    this.scale += (this.targetScale - this.scale) * 0.3;
+                } else {
+                    this.scale += (1.0 - this.scale) * 0.35;
+                }
+            }
+ 
+            draw(ctx) {
+                ctx.save();
+                if (this.wobbleTimer > 0) ctx.translate(Math.sin(this.wobbleTimer * 0.8) * 8, 0);
+                if (this.isDragging) {
+                    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+                    ctx.shadowBlur = 24;
+                    ctx.shadowOffsetY = 16;
+                }
+ 
+                let drawCellH = this.isPlaced ? currentCellHeight : CELL_SIZE;
+ 
+                let topCell = this.cells.find(c => c[1] === 0);
+                if (topCell) {
+                    ctx.beginPath();
+                    ctx.arc(this.x + topCell[0] * CELL_SIZE * this.scale + (CELL_SIZE * this.scale * 0.5), this.y + topCell[1] * drawCellH * this.scale, 12 * this.scale, Math.PI, 0);
+                    ctx.strokeStyle = "#334155";
+                    ctx.lineWidth = 5 * this.scale;
+                    ctx.stroke();
+                }
+ 
+                ctx.fillStyle = this.color;
+                for (let cell of this.cells) {
+                    let cx = this.x + cell[0] * CELL_SIZE * this.scale;
+                    let cy = this.y + cell[1] * drawCellH * this.scale;
+                    drawRoundedRect(ctx, cx + 2 * this.scale, cy + 2 * this.scale, (CELL_SIZE * this.scale) - 4 * this.scale, (drawCellH * this.scale) - 4 * this.scale, 12 * this.scale);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+ 
+            isSlotHit(px, py) {
+                if (this.isPlaced || this.isDragging) return false;
+                return (Math.abs(px - this.slotCenterX) <= (SLOT_WIDTH * 0.9) / 2 && Math.abs(py - this.slotCenterY) <= (SLOT_HEIGHT * 0.9) / 2);
+            }
+ 
+            isGridHit(px, py) {
+                if (!this.isPlaced || this.isDragging) return false;
+                let suitcaseBottomY = currentGridOffsetY + currentSuitcaseHeight;
+                let col = Math.floor((px - GRID_START_X) / CELL_SIZE);
+                let row = Math.floor(GRID_ROWS - (suitcaseBottomY - py) / currentCellHeight);
+                return this.cells.some(cell => (this.gridX + cell[0] === col) && (this.gridY + cell[1] === row));
+            }
+        }
+ 
+        function drawSuitcase() {
+            let totalW = GRID_COLS * CELL_SIZE;
+            let totalH = currentSuitcaseHeight;
+ 
+            ctx.fillStyle = "#78350F";
+            ctx.shadowColor = 'rgba(0,0,0,0.2)';
+            ctx.shadowBlur = 30;
+            ctx.shadowOffsetY = 15;
+            drawRoundedRect(ctx, GRID_START_X - 26, currentGridOffsetY - 36, totalW + 52, totalH + 72, 36);
+            ctx.fill();
+            ctx.shadowColor = 'transparent';
+ 
+            ctx.fillStyle = "#475569";
+            drawRoundedRect(ctx, GAME_WIDTH / 2 - 80, currentGridOffsetY - 64, 160, 42, 18);
+            ctx.fill();
+            ctx.fillStyle = "#f8fafc";
+            drawRoundedRect(ctx, GAME_WIDTH / 2 - 52, currentGridOffsetY - 54, 104, 20, 8);
+            ctx.fill();
+ 
+            ctx.fillStyle = "#B45309";
+            drawRoundedRect(ctx, GRID_START_X - 10, currentGridOffsetY - 10, totalW + 20, totalH + 20, 20);
+            ctx.fill();
+ 
+            ctx.save();
+            ctx.beginPath();
+            drawRoundedRect(ctx, GRID_START_X - 10, currentGridOffsetY - 10, totalW + 20, totalH + 20, 20);
+            ctx.clip();
+ 
+            ctx.fillStyle = "#D97706";
+            let suitcaseBottomY = currentGridOffsetY + totalH;
+            for (let row = 0; row < GRID_ROWS; row++) {
+                for (let col = 0; col < GRID_COLS; col++) {
+                    let gx = GRID_START_X + col * CELL_SIZE;
+                    let gy = suitcaseBottomY - (GRID_ROWS - row) * currentCellHeight;
+                    drawRoundedRect(ctx, gx + 2, gy + 2, CELL_SIZE - 4, currentCellHeight - 4, 12);
+                    ctx.fill();
+                }
+            }
+ 
+            if (draggedPiece) {
+                let col = Math.round((draggedPiece.x - GRID_START_X) / CELL_SIZE);
+                let row = Math.round(GRID_ROWS - (suitcaseBottomY - draggedPiece.y) / currentCellHeight);
+                let canPlace = true;
+                for (let cell of draggedPiece.cells) {
+                    let gx = col + cell[0];
+                    let gy = row + cell[1];
+                    if (gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS || grid[gy][gx] !== null) { canPlace = false; break; }
+                }
+ 
+                ctx.save();
+                ctx.fillStyle = canPlace ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)";
+                ctx.strokeStyle = canPlace ? "#22C55E" : "#EF4444";
+                ctx.lineWidth = 4;
+                for (let cell of draggedPiece.cells) {
+                    let gx = col + cell[0];
+                    let gy = row + cell[1];
+                    if (gx >= 0 && gx < GRID_COLS && gy >= 0 && gy < GRID_ROWS) {
+                        let px = GRID_START_X + gx * CELL_SIZE;
+                        let py = suitcaseBottomY - (GRID_ROWS - gy) * currentCellHeight;
+                        drawRoundedRect(ctx, px + 2, py + 2, CELL_SIZE - 4, currentCellHeight - 4, 10);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+ 
+            for (let p of pieces) {
+                if (p.isPlaced && p !== draggedPiece) {
+                    p.draw(ctx);
+                }
+            }
+ 
+            ctx.restore();
+ 
+            if (draggedPiece) {
+                let col = Math.round((draggedPiece.x - GRID_START_X) / CELL_SIZE);
+                let suitcaseBottomY = currentGridOffsetY + totalH;
+                let row = Math.round(GRID_ROWS - (suitcaseBottomY - draggedPiece.y) / currentCellHeight);
+                let canPlace = true;
+                let minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
+ 
+                for (let cell of draggedPiece.cells) {
+                    let gx = col + cell[0];
+                    let gy = row + cell[1];
+                    if (gx < minC) minC = gx;
+                    if (gx > maxC) maxC = gx;
+                    if (gy < minR) minR = gy;
+                    if (gy > maxR) maxR = gy;
+                    if (gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS || grid[gy][gx] !== null) { canPlace = false; }
+                }
+ 
+                ctx.save();
+                const MARGIN = 100;
+                
+                ctx.beginPath();
+                let leftX = GRID_START_X + minC * CELL_SIZE;
+                ctx.moveTo(leftX, currentGridOffsetY - MARGIN);
+                ctx.lineTo(leftX, currentGridOffsetY + totalH + MARGIN);
+                
+                let rightX = GRID_START_X + (maxC + 1) * CELL_SIZE;
+                ctx.moveTo(rightX, currentGridOffsetY - MARGIN);
+                ctx.lineTo(rightX, currentGridOffsetY + totalH + MARGIN);
+                
+                let topY = suitcaseBottomY - (GRID_ROWS - minR) * currentCellHeight;
+                ctx.moveTo(GRID_START_X - MARGIN, topY);
+                ctx.lineTo(GRID_START_X + totalW + MARGIN, topY);
+                
+                let bottomY = suitcaseBottomY - (GRID_ROWS - (maxR + 1)) * currentCellHeight;
+                ctx.moveTo(GRID_START_X - MARGIN, bottomY);
+                ctx.lineTo(GRID_START_X + totalW + MARGIN, bottomY);
+                
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+                ctx.lineWidth = 7;
+                ctx.setLineDash([12, 10]); 
+                ctx.stroke();
+ 
+                ctx.strokeStyle = canPlace ? "#4ADE80" : "#F87171";
+                ctx.lineWidth = 3.5;
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
+ 
+        function initStage() {
+            GRID_ROWS = INITIAL_GRID_ROWS;
+            GRID_START_X = (GAME_WIDTH - GRID_COLS * CELL_SIZE) / 2;
+            
+            const HEADER_BOTTOM = 90; // ヘッダーテキストやタイマーの領域
+            const BOTTOM_MARGIN = 10; // 画面下部の最小余白
+            const availableHeight = GAME_HEIGHT - HEADER_BOTTOM - BOTTOM_MARGIN;
+            
+            const slotGap = 4; // インベントリスロット間の隙間
+            const totalInventoryHeight = SLOT_HEIGHT * 3 + slotGap * 2;
+            
+            const suitcaseTopUI = 64; // スーツケース取っ手等上部にはみ出るサイズ
+            const suitcaseBottomUI = 36; // スーツケース背景下部にはみ出るサイズ
+            const spaceBetweenSuitcaseAndInventory = 10; // スーツケース下端とインベントリ間の隙間
+            
+            const fixedHeight = suitcaseTopUI + suitcaseBottomUI + spaceBetweenSuitcaseAndInventory + totalInventoryHeight;
+            const targetSuitcaseHeight = GRID_ROWS * CELL_SIZE;
+            const totalTargetHeight = targetSuitcaseHeight + fixedHeight;
+            
+            if (totalTargetHeight <= availableHeight) {
+                // 全体が画面に収まる場合、ヘッダーを除いた領域の上下中央に配置
+                const extraSpace = availableHeight - totalTargetHeight;
+                const topOffset = HEADER_BOTTOM + extraSpace / 2;
+                
+                currentSuitcaseHeight = targetSuitcaseHeight;
+                currentGridOffsetY = topOffset + suitcaseTopUI;
+            } else {
+                // 収まらない場合はスーツケースの高さを圧縮する
+                currentSuitcaseHeight = Math.max(CELL_SIZE * 2, availableHeight - fixedHeight);
+                currentGridOffsetY = HEADER_BOTTOM + suitcaseTopUI;
+            }
+            
+            const inventoryStartY = currentGridOffsetY + currentSuitcaseHeight + suitcaseBottomUI + spaceBetweenSuitcaseAndInventory;
+            
+            inventoryRows = [
+                inventoryStartY + SLOT_HEIGHT / 2,
+                inventoryStartY + SLOT_HEIGHT + slotGap + SLOT_HEIGHT / 2,
+                inventoryStartY + SLOT_HEIGHT * 2 + slotGap * 2 + SLOT_HEIGHT / 2
+            ];
+            
+            currentCellHeight = currentSuitcaseHeight / GRID_ROWS;
+            
+            grid = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(null));
+            pieces = [];
+            draggedPiece = null;
+            stageCrushCount = 0;
+ 
+            const pieceCount = getPieceCountForSize(GRID_COLS, INITIAL_GRID_ROWS);
+            const stageShapes = generateRandomShapes(GRID_COLS, INITIAL_GRID_ROWS, pieceCount);
+ 
+            for (let i = 0; i < stageShapes.length; i++) {
+                pieces.push(new Piece(i, stageShapes[i], i));
+            }
+        }
+ 
+        function initGame() {
+            stageLevel = 1;
+            totalDissatisfaction = 0; 
+            stageCrushCount = 0; 
+            totalScore = 0;
+            totalElapsedTime = 0;
+            rankPlayTimes = Array(RANKS.length).fill(0);
+            rankShippedCells = Array(RANKS.length).fill(0);
+            rankClearedStages = Array(RANKS.length).fill(0);
+            shippedCount = 0;
+            timeLeft = TIME_LIMIT;
+            isGameOver = false;
+            isPromotionReserved = false;
+            lastTime = performance.now();
+            updatePromoteButtonUI();
+            initStage();
+            updateTimerBarPosition();
+            resizeCanvas();
+        }
+ 
+        function updatePromoteButtonUI() {
+            const promoteBtn = document.getElementById('promoteBtn');
+            if (!promoteBtn) return;
+            const compact = buttonSize === 'compact';
+ 
+            promoteBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'animate-bounce', 'bg-amber-500', 'bg-amber-300', 'text-amber-900', 'text-white', 'shadow-[0_0_20px_rgba(245,158,11,0.8)]');
+ 
+            if (isPromotionReserved) {
+                promoteBtn.innerText = compact ? `🎖️ 済` : `🎖️ 申請受付済！`;
+                promoteBtn.classList.add('bg-amber-300', 'text-amber-900');
+                promoteBtn.style.pointerEvents = 'none';
+            } else {
+                promoteBtn.classList.add('text-white', 'bg-amber-500');
+ 
+                if (shippedCount >= REQUIRE_SHIPPED_COUNT && currentRankIndex < RANKS.length - 1) {
+                    promoteBtn.innerText = compact ? `🎖️ ${shippedCount}/${CONSUME_SHIPPED_COUNT}` : `🎖️ 申請 (${shippedCount}/${CONSUME_SHIPPED_COUNT})`;
+                    promoteBtn.classList.add('animate-bounce', 'shadow-[0_0_20px_rgba(245,158,11,0.8)]');
+                    promoteBtn.style.pointerEvents = 'auto';
+                } else {
+                    promoteBtn.innerText = compact ? `🎖️ ${shippedCount}/${CONSUME_SHIPPED_COUNT}` : `🎖️ 昇格 (${shippedCount}/${CONSUME_SHIPPED_COUNT})`;
+                    promoteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    promoteBtn.style.pointerEvents = 'none';
+                }
+            }
+        }
+ 
+        function showGameOver() {
+            isGameOver = true;
+            isGameStarted = false;
+            
+            document.getElementById('compressBtn').style.pointerEvents = 'none';
+            document.getElementById('sendBtn').style.pointerEvents = 'none';
+            document.getElementById('promoteBtn').style.pointerEvents = 'none';
+ 
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            document.getElementById('finalRank').innerText = RANKS[currentRankIndex].name;
+            document.getElementById('finalStage').innerText = stageLevel;
+            document.getElementById('finalScore').innerText = totalScore;
+            
+            const minutes = Math.floor(totalElapsedTime / 60);
+            const seconds = Math.floor(totalElapsedTime % 60);
+            document.getElementById('finalTime').innerText = `${minutes}分${seconds}秒`;
+            
+            // 総合評価の計算と表示
+            let evaluation = 0;
+            const rankResultList = document.getElementById('rankResultList');
+            rankResultList.innerHTML = '';
+            
+            for (let i = 0; i <= currentRankIndex; i++) {
+                const stages = rankClearedStages[i];
+                let rankScore = 0;
+                
+                if (stages > 0) {
+                    const cells = rankShippedCells[i];
+                    const time = rankPlayTimes[i];
+                    
+                    // 時間減衰の免除時間を計算（その役職での1ステージあたりの荷物数 × ステージ数 × 1秒）
+                    const pieceCount = getPieceCountForSize(RANKS[i].cols, RANKS[i].rows);
+                    const graceTime = pieceCount * stages;
+                    
+                    // 猶予時間を超えた時間。マイナスにならないよう0以上にする
+                    const effectiveTime = Math.max(0, time - graceTime); 
+                    
+                    // 時間による減衰（分母）。
+                    // 最小値を 1 にすることで、時間が短くてもスコアが増倍されない（最大で /1 になる）ようにする
+                    const timeDivisor = Math.max(1, effectiveTime * 0.5);
+                    
+                    const base = 10 * cells;
+                    const term1 = (base * 5) / stages;
+                    const term2 = ((base * 5) / timeDivisor) / stages;
+                    rankScore = Math.floor(term1 + term2);
+                    evaluation += rankScore;
+                }
+ 
+                // プレイ時間が0より大きい、もしくは現在の役職の場合のみ表示
+                if (rankPlayTimes[i] > 0 || i === currentRankIndex) {
+                    const time = rankPlayTimes[i];
+                    const rMins = Math.floor(time / 60);
+                    const rSecs = Math.floor(time % 60);
+                    const li = document.createElement('li');
+                    li.className = "flex flex-col border-b border-slate-700/50 pb-1 last:border-0";
+                    li.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-slate-200">${RANKS[i].name}</span>
+                            <span class="font-mono text-xs">${rMins}分${rSecs.toString().padStart(2, '0')}秒</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-slate-400 mt-0.5">
+                            <span>クリア: ${stages}</span>
+                            <span>給料: <span class="text-emerald-400 font-bold">¥${rankScore.toLocaleString()}</span></span>
+                        </div>
+                    `;
+                    rankResultList.appendChild(li);
+                }
+            }
+            document.getElementById('finalEvaluation').innerText = '¥' + evaluation.toLocaleString();
+            
+            gameOverScreen.classList.remove('hidden');
+            gameOverScreen.classList.add('flex');
+            
+            setTimeout(() => {
+                gameOverScreen.classList.remove('opacity-0');
+            }, 50);
+        }
+ 
+        function getCrushPenalty(c) {
+            if (c <= 0) return 0;
+            return (c * c - c + 2) / 2;
+        }
+ 
+        function nextStage() {
+            if (isTransitioning || isGameOver) return;
+ 
+            shippedCount++;
+            updatePromoteButtonUI();
+ 
+            document.getElementById('compressBtn').style.opacity = '0.5';
+            document.getElementById('compressBtn').style.pointerEvents = 'none';
+            document.getElementById('sendBtn').style.opacity = '0.5';
+            document.getElementById('sendBtn').style.pointerEvents = 'none';
+ 
+            let stageScore = 0;
+            let stageUnplaced = 0;
+            for (let p of pieces) {
+                if (p.isPlaced) {
+                    stageScore += p.cells.length;
+                } else {
+                    stageUnplaced++;
+                }
+            }
+            totalScore += stageScore;
+            rankShippedCells[currentRankIndex] += stageScore;
+            rankClearedStages[currentRankIndex] += 1;
+ 
+            let unplacedPenalty = stageUnplaced > 0 ? (stageUnplaced * stageUnplaced + 1) : 0;
+            let crushPenalty = getCrushPenalty(stageCrushCount);
+            
+            totalDissatisfaction += (unplacedPenalty + crushPenalty);
+ 
+            if (totalDissatisfaction >= 50) {
+                showGameOver();
+            } else {
+                proceedToNextStage();
+            }
+        }
+ 
+        function proceedToNextStage() {
+            if (draggedPiece) {
+                draggedPiece.isDragging = false;
+                draggedPiece = null;
+            }
+ 
+            if (isPromotionReserved) {
+                shippedCount -= CONSUME_SHIPPED_COUNT;
+                if (currentRankIndex < RANKS.length - 1) {
+                    currentRankIndex++;
+                }
+ 
+                GRID_COLS = RANKS[currentRankIndex].cols;
+                GRID_ROWS = RANKS[currentRankIndex].rows;
+                INITIAL_GRID_ROWS = GRID_ROWS;
+ 
+                isPromotionReserved = false;
+                updatePromoteButtonUI();
+            }
+ 
+            const oldCtx = oldContentCanvas.getContext('2d');
+            oldCtx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            // canvasの実ピクセル解像度はdevicePixelRatio倍になっているため、
+            // ソース全体(canvas.width/height)からGAME_WIDTH×GAME_HEIGHTへ明示的に縮小コピーする
+            oldCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+ 
+            transitionStageLabel = stageLevel;
+ 
+            stageLevel++;
+            initStage();
+            timeLeft = TIME_LIMIT;
+ 
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            drawScene();
+ 
+            const nextCtx = nextContentCanvas.getContext('2d');
+            nextCtx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            nextCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+ 
+            transitionProgress = 0;
+            isTransitioning = true;
+        }
+ 
+        function returnAllToInventory() {
+            for (let p of pieces) {
+                p.isPlaced = false;
+                p.gridX = -1;
+                p.gridY = -1;
+                p.updateSlotTarget();
+            }
+            updateGridOccupancy();
+        }
+ 
+        function updateGridOccupancy() {
+            grid = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(null));
+            for (let p of pieces) {
+                if (p.isPlaced) {
+                    for (let cell of p.cells) grid[p.gridY + cell[1]][p.gridX + cell[0]] = p.id;
+                }
+            }
+        }
+ 
+        function compressAndExpand() {
+            if (draggedPiece) {
+                draggedPiece.isDragging = false;
+                draggedPiece.isPlaced = false;
+                draggedPiece.gridX = -1;
+                draggedPiece.gridY = -1;
+                draggedPiece.updateSlotTarget();
+                draggedPiece = null;
+            }
+ 
+            let placedPieces = pieces.filter(p => p.isPlaced);
+ 
+            if (GRID_ROWS < 15) { 
+                GRID_ROWS += 1;
+                for (let p of placedPieces) {
+                    p.gridY += 1; 
+                }
+            }
+ 
+            for (let p of placedPieces) {
+                p.targetX = GRID_START_X + p.gridX * CELL_SIZE;
+                p.isCrushed = true;
+                p.crushLevel += 1;
+            }
+ 
+            updateGridOccupancy();
+        }
+ 
+        function getCanvasPos(e) {
+            canvasRect = canvas.getBoundingClientRect();
+            return {
+                x: (e.clientX - canvasRect.left) * (GAME_WIDTH / canvasRect.width),
+                y: (e.clientY - canvasRect.top) * (GAME_HEIGHT / canvasRect.height)
+            };
+        }
+ 
+        function handlePointerDown(e) {
+            if (!isGameStarted || isTransitioning || isPaused) return; 
+            const pos = getCanvasPos(e);
+            let touchedPiece = pieces.slice().reverse().find(p => p.isGridHit(pos.x, pos.y)) || pieces.find(p => p.isSlotHit(pos.x, pos.y));
+            if (!touchedPiece) return;
+ 
+            e.preventDefault();
+            draggedPiece = touchedPiece;
+            dragStartPos = { x: pos.x, y: pos.y };
+            isDragMoved = false;
+ 
+            pieces.splice(pieces.indexOf(draggedPiece), 1);
+            pieces.push(draggedPiece);
+            draggedPiece.isDragging = true;
+ 
+            if (draggedPiece.isPlaced) {
+                draggedPiece.isPlaced = false;
+                updateGridOccupancy();
+                let suitcaseBottomY = currentGridOffsetY + currentSuitcaseHeight;
+                draggedPiece.dragOffsetX = (GRID_START_X + draggedPiece.gridX * CELL_SIZE) - pos.x;
+                draggedPiece.dragOffsetY = (suitcaseBottomY - (GRID_ROWS - draggedPiece.gridY) * currentCellHeight) - pos.y;
+            } else {
+                let u = (pos.x - draggedPiece.x) / draggedPiece.scale;
+                let v = (pos.y - draggedPiece.y) / draggedPiece.scale;
+                draggedPiece.scale = 1.0;
+                draggedPiece.x = pos.x - u * 1.0;
+                draggedPiece.y = pos.y - v * 1.0;
+                draggedPiece.dragOffsetX = draggedPiece.x - pos.x;
+                draggedPiece.dragOffsetY = draggedPiece.y - pos.y;
+            }
+        }
+ 
+        function handlePointerMove(e) {
+            if (!draggedPiece) return;
+            const pos = getCanvasPos(e);
+            if (Math.hypot(pos.x - dragStartPos.x, pos.y - dragStartPos.y) > 6) {
+                isDragMoved = true;
+                if (draggedPiece.gridX >= 0) {
+                    draggedPiece.gridX = -1;
+                    draggedPiece.gridY = -1;
+                }
+            }
+            draggedPiece.x = pos.x + draggedPiece.dragOffsetX;
+            draggedPiece.y = pos.y + draggedPiece.dragOffsetY;
+        }
+ 
+        function handlePointerUp(e) {
+            if (!draggedPiece) return;
+            let suitcaseBottomY = currentGridOffsetY + currentSuitcaseHeight;
+            if (!isDragMoved) {
+                draggedPiece.isDragging = false;
+                if (draggedPiece.gridX >= 0) {
+                    if (draggedPiece.tryRotateOnGrid()) {
+                        draggedPiece.isPlaced = true;
+                        draggedPiece.targetX = GRID_START_X + draggedPiece.gridX * CELL_SIZE;
+                        draggedPiece.targetY = suitcaseBottomY - (GRID_ROWS - draggedPiece.gridY) * currentCellHeight;
+                    } else {
+                        draggedPiece.isPlaced = true;
+                        draggedPiece.targetX = GRID_START_X + draggedPiece.gridX * CELL_SIZE;
+                        draggedPiece.targetY = suitcaseBottomY - (GRID_ROWS - draggedPiece.gridY) * currentCellHeight;
+                    }
+                } else {
+                    draggedPiece.rotate();
+                }
+                finishDrop();
+                return;
+            }
+ 
+            let col = Math.round((draggedPiece.x - GRID_START_X) / CELL_SIZE);
+            let row = Math.round(GRID_ROWS - (suitcaseBottomY - draggedPiece.y) / currentCellHeight);
+            let canPlace = true;
+            for (let cell of draggedPiece.cells) {
+                let gx = col + cell[0], gy = row + cell[1];
+                if (gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS || grid[gy][gx] !== null) { canPlace = false; break; }
+            }
+ 
+            if (canPlace) {
+                draggedPiece.isPlaced = true;
+                draggedPiece.gridX = col;
+                draggedPiece.gridY = row;
+                draggedPiece.targetX = GRID_START_X + col * CELL_SIZE;
+                draggedPiece.targetY = suitcaseBottomY - (GRID_ROWS - row) * currentCellHeight;
+                draggedPiece.targetScale = 1.0;
+            } else {
+                draggedPiece.isPlaced = false;
+                draggedPiece.gridX = -1;
+                draggedPiece.gridY = -1;
+                draggedPiece.isDragging = false; 
+                draggedPiece.updateSlotTarget();
+            }
+            finishDrop();
+        }
+ 
+        function finishDrop() {
+            updateGridOccupancy();
+            if (draggedPiece) {
+                draggedPiece.isDragging = false;
+                draggedPiece = null;
+            }
+        }
+ 
+        canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); handlePointerDown(e); });
+        canvas.addEventListener('pointermove', handlePointerMove);
+        canvas.addEventListener('pointerup', (e) => { try { canvas.releasePointerCapture(e.pointerId); } catch(err){} handlePointerUp(e); });
+        
+        canvas.addEventListener('pointercancel', (e) => { 
+            try { canvas.releasePointerCapture(e.pointerId); } catch(err){} 
+            if (draggedPiece) {
+                draggedPiece.isPlaced = false;
+                draggedPiece.gridX = -1;
+                draggedPiece.gridY = -1;
+                draggedPiece.isDragging = false;
+                draggedPiece.updateSlotTarget();
+                finishDrop();
+            }
+        });
+ 
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+ 
+        function drawInventorySlots() {
+            ctx.save();
+            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+            ctx.strokeStyle = "rgba(203, 213, 225, 0.8)";
+            ctx.lineWidth = 2;
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    drawRoundedRect(ctx, inventoryCols[c] - SLOT_WIDTH / 2, inventoryRows[r] - SLOT_HEIGHT / 2, SLOT_WIDTH, SLOT_HEIGHT, 14);
+                    ctx.fill(); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+ 
+        function updateTimerBarPosition() {
+            if (timerPosition === 'left') {
+                const suitcaseLeft = GRID_START_X - 26;
+                timerBarX = suitcaseLeft - TIMER_BAR_WIDTH - TIMER_BAR_GAP;
+            } else {
+                const suitcaseRight = GRID_START_X + GRID_COLS * CELL_SIZE + 26;
+                timerBarX = suitcaseRight + TIMER_BAR_GAP;
+            }
+            timerBarY = currentGridOffsetY +
+                Math.max(0, (currentSuitcaseHeight - TIMER_BAR_HEIGHT) / 2);
+        }
+ 
+        function drawTimer() {
+            const progress = Math.max(0, Math.min(1, timeLeft / TIME_LIMIT));
+ 
+            // スーツケースと同じコンテンツとして、スライド時に一緒に動く。
+            const x = timerBarX;
+            const y = timerBarY;
+ 
+            ctx.save();
+ 
+            // 背景
+            ctx.fillStyle = "rgba(15, 23, 42, 0.20)";
+            drawRoundedRect(ctx, x, y, TIMER_BAR_WIDTH, TIMER_BAR_HEIGHT, 9);
+            ctx.fill();
+ 
+            // 残り時間：上から下へ減る（上が削れていく）
+            const fillHeight = TIMER_BAR_HEIGHT * progress;
+            if (fillHeight > 0) {
+                if (timeLeft > 20) {
+                    ctx.fillStyle = "rgba(34, 197, 94, 0.45)"; // 緑
+                } else if (timeLeft > 10) {
+                    ctx.fillStyle = "rgba(234, 179, 8, 0.65)"; // 黄色
+                } else {
+                    ctx.fillStyle = "rgba(239, 68, 68, 0.65)"; // 赤
+                }
+                const fillY = y + (TIMER_BAR_HEIGHT - fillHeight);
+                drawRoundedRect(ctx, x, fillY, TIMER_BAR_WIDTH, fillHeight, 9);
+                ctx.fill();
+            }
+ 
+            // 時計
+            if (timeLeft > 20) {
+                ctx.fillStyle = "rgba(20, 83, 45, 0.85)";
+            } else if (timeLeft > 10) {
+                ctx.fillStyle = "rgba(133, 77, 14, 0.9)";
+            } else {
+                ctx.fillStyle = "rgba(127, 29, 29, 0.9)";
+            }
+            ctx.font = "900 20px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom";
+            ctx.fillText("⏱", x + TIMER_BAR_WIDTH / 2, y - 7);
+ 
+            // 秒数
+            ctx.font = "900 18px Inter, sans-serif";
+            ctx.textBaseline = "top";
+            ctx.fillText(
+                `${Math.ceil(timeLeft)}`,
+                x + TIMER_BAR_WIDTH / 2,
+                y + TIMER_BAR_HEIGHT + 7
+            );
+ 
+            ctx.restore();
+        }
+ 
+ 
+        function drawTopBar(includeTimer = true) {
+            ctx.save();
+            ctx.textBaseline = "middle";
+ 
+            if (includeTimer) drawTimer();
+ 
+            const currentStage = isTransitioning ? transitionStageLabel : stageLevel;
+            ctx.font = "800 28px Inter, sans-serif";
+            ctx.textAlign = "center";
+            
+            const rankName = RANKS[currentRankIndex].name;
+            const rankText = `👔 ${rankName} | ステージ ${currentStage}`;
+ 
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.lineWidth = 6;
+            ctx.lineJoin = "round";
+            ctx.strokeText(rankText, GAME_WIDTH / 2, 40);
+            
+            ctx.fillStyle = "#0F172A";
+            ctx.fillText(rankText, GAME_WIDTH / 2, 40);
+ 
+            ctx.font = "bold 20px Inter, sans-serif";
+            
+            ctx.textAlign = "left";
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.lineWidth = 4;
+            ctx.strokeText(`😡 不満度: ${totalDissatisfaction}/50`, 20, 40);
+ 
+            ctx.fillStyle = totalDissatisfaction >= 40 ? "#EF4444" : (totalDissatisfaction >= 25 ? "#F59E0B" : "#0F172A");
+            ctx.fillText(`😡 不満度: ${totalDissatisfaction}/50`, 20, 40);
+ 
+            ctx.restore();
+        }
+ 
+        function drawScene(contentOffsetX = 0) {
+            drawTopBar();
+ 
+            ctx.save();
+            ctx.translate(contentOffsetX, 0);
+ 
+            drawSuitcase();
+            drawInventorySlots();
+ 
+            for (let p of pieces) {
+                if (!p.isPlaced && p !== draggedPiece) {
+                    p.draw(ctx);
+                }
+            }
+            if (draggedPiece) draggedPiece.draw(ctx);
+ 
+            ctx.restore();
+        }
+ 
+        function gameLoop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+ 
+            if (isGameStarted && !isPaused) {
+                if (!isGameOver) {
+                    totalElapsedTime += dt;
+                    rankPlayTimes[currentRankIndex] += dt;
+                }
+ 
+                if (isTransitioning) {
+                    transitionProgress += dt * 1.5; 
+                    if (transitionProgress >= 1) {
+                        transitionProgress = 1;
+ 
+                        isTransitioning = false;
+                        updateTimerBarPosition();
+                        document.getElementById('compressBtn').style.opacity = '1';
+                        document.getElementById('compressBtn').style.pointerEvents = 'auto';
+                        document.getElementById('sendBtn').style.opacity = '1';
+                        document.getElementById('sendBtn').style.pointerEvents = 'auto';
+                    }
+                } else {
+                    timeLeft -= dt;
+                    if (timeLeft <= 0) {
+                        timeLeft = 0;
+                        nextStage(); 
+                    }
+                }
+            }
+ 
+            if (!isTransitioning) {
+                let targetCellHeight = currentSuitcaseHeight / GRID_ROWS;
+                currentCellHeight += (targetCellHeight - currentCellHeight) * 0.3;
+ 
+                let suitcaseBottomY = currentGridOffsetY + currentSuitcaseHeight;
+                for (let p of pieces) {
+                    if (p.isPlaced && !p.isDragging) {
+                        p.targetY = suitcaseBottomY - (GRID_ROWS - p.gridY) * currentCellHeight;
+                    }
+                    p.update();
+                }
+            }
+ 
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+ 
+            if (isTransitioning) {
+                let t = transitionProgress;
+                let ease = 1 - Math.pow(1 - t, 3);
+                let offsetX = ease * GAME_WIDTH;
+ 
+                drawTopBar(false);
+ 
+                ctx.drawImage(oldContentCanvas, 0, 65, GAME_WIDTH, GAME_HEIGHT - 65, -offsetX, 65, GAME_WIDTH, GAME_HEIGHT - 65);
+                ctx.drawImage(nextContentCanvas, 0, 65, GAME_WIDTH, GAME_HEIGHT - 65, GAME_WIDTH - offsetX, 65, GAME_WIDTH, GAME_HEIGHT - 65);
+            } else {
+                drawScene();
+            }
+ 
+            requestAnimationFrame(gameLoop);
+        }
+ 
+        window.addEventListener('DOMContentLoaded', function() {
+            initGame();
+ 
+            const sizeSelect = document.getElementById('gridSizeSelect');
+            const rankDisplay = document.getElementById('rankDisplay');
+ 
+            function updateRankDisplay() {
+                const parts = sizeSelect.value.split(',');
+                const cols = parseInt(parts[0]) || 6;
+                const rows = parts.length > 1 ? parseInt(parts[1]) : cols;
+                
+                let matchRank = RANKS.find(r => r.cols === cols && r.rows === rows);
+                if (matchRank) {
+                    rankDisplay.innerText = `👔 ${matchRank.name}`;
+                }
+            }
+ 
+            sizeSelect.addEventListener('change', updateRankDisplay);
+            updateRankDisplay();
+ 
+            document.getElementById('startBtn').addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const sizeSelect = document.getElementById('gridSizeSelect');
+                const parts = sizeSelect.value.split(',');
+                
+                GRID_COLS = parseInt(parts[0]) || 6;
+                GRID_ROWS = parts.length > 1 ? parseInt(parts[1]) : GRID_COLS;
+                INITIAL_GRID_ROWS = GRID_ROWS;
+ 
+                let matchIdx = RANKS.findIndex(r => r.cols === GRID_COLS && r.rows === GRID_ROWS);
+                if (matchIdx !== -1) {
+                    currentRankIndex = matchIdx;
+                } else {
+                    currentRankIndex = 0;
+                }
+ 
+                // ボタンの位置・タイマー位置・ボタンサイズは、設定トグルをタップした時点で
+                // すでに即時反映されているため、ここで改めて読み込む必要はない
+ 
+                initGame();
+ 
+                const startScreen = document.getElementById('startScreen');
+                startScreen.style.opacity = '0';
+                startScreen.style.pointerEvents = 'none';
+                
+                document.getElementById('compressBtn').style.display = 'flex';
+                document.getElementById('sendBtn').style.display = 'flex';
+                document.getElementById('promoteBtn').style.display = 'flex';
+                document.getElementById('settingsBtn').style.display = 'flex';
+                
+                lastTime = performance.now();
+                isGameStarted = true;
+            });
+ 
+            // モーダル制御ロジック
+            const configModal = document.getElementById('configModal');
+            const tabConfig = document.getElementById('tabConfig');
+            const tabInstructions = document.getElementById('tabInstructions');
+            const contentConfig = document.getElementById('contentConfig');
+            const contentInstructions = document.getElementById('contentInstructions');
+            const gridSizeSelect = document.getElementById('gridSizeSelect');
+            const msg = document.getElementById('configGameStartedMsg');
+ 
+            function switchTab(tabName) {
+                if (tabName === 'config') {
+                    tabConfig.classList.add('text-blue-400', 'border-blue-400', 'bg-slate-800/50');
+                    tabConfig.classList.remove('text-slate-400', 'border-transparent');
+                    tabInstructions.classList.add('text-slate-400', 'border-transparent');
+                    tabInstructions.classList.remove('text-blue-400', 'border-blue-400', 'bg-slate-800/50');
+                    contentConfig.classList.remove('hidden');
+                    contentInstructions.classList.add('hidden');
+                } else {
+                    tabInstructions.classList.add('text-blue-400', 'border-blue-400', 'bg-slate-800/50');
+                    tabInstructions.classList.remove('text-slate-400', 'border-transparent');
+                    tabConfig.classList.add('text-slate-400', 'border-transparent');
+                    tabConfig.classList.remove('text-blue-400', 'border-blue-400', 'bg-slate-800/50');
+                    contentInstructions.classList.remove('hidden');
+                    contentConfig.classList.add('hidden');
+                }
+            }
+ 
+            tabConfig.addEventListener('click', () => switchTab('config'));
+            tabInstructions.addEventListener('click', () => switchTab('instructions'));
+ 
+            // 汎用: 2択トグルグループのセットアップ (タップ1回でその場で切り替わる)
+            function createToggleGroup(containerId, initialValue, onChange) {
+                const container = document.getElementById(containerId);
+                const buttons = Array.from(container.querySelectorAll('.toggle-btn'));
+ 
+                function setActive(value) {
+                    buttons.forEach(btn => {
+                        const active = btn.dataset.value === value;
+                        btn.classList.toggle('bg-blue-600', active);
+                        btn.classList.toggle('text-white', active);
+                        btn.classList.toggle('shadow', active);
+                        btn.classList.toggle('text-slate-400', !active);
+                        btn.classList.toggle('hover:bg-slate-800/60', !active);
+                    });
+                }
+ 
+                buttons.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const value = btn.dataset.value;
+                        setActive(value);
+                        onChange(value);
+                    });
+                });
+ 
+                setActive(initialValue);
+                onChange(initialValue);
+                return setActive;
+            }
+ 
+            // 設定変更の即時反映
+            createToggleGroup('buttonPositionToggle', 'right', (value) => {
+                const container = document.getElementById('actionButtonsContainer');
+                if (value === 'right') {
+                    container.classList.remove('left-4', 'md:left-6');
+                    container.classList.add('right-4', 'md:right-6');
+                } else {
+                    container.classList.remove('right-4', 'md:right-6');
+                    container.classList.add('left-4', 'md:left-6');
+                }
+            });
+ 
+            createToggleGroup('timerPositionToggle', timerPosition, (value) => {
+                timerPosition = value;
+                if (isGameStarted) {
+                    updateTimerBarPosition();
+                }
+            });
+ 
+            // アクションボタンの大きさ(通常/コンパクト)を切り替える
+            function applyButtonSize() {
+                const compact = buttonSize === 'compact';
+                document.querySelectorAll('.actionBtnLabel').forEach(el => {
+                    el.style.display = compact ? 'none' : 'inline';
+                });
+                ['promoteBtn', 'compressBtn', 'sendBtn'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    if (compact) {
+                        btn.classList.remove('px-5');
+                        btn.classList.add('px-3');
+                    } else {
+                        btn.classList.remove('px-3');
+                        btn.classList.add('px-5');
+                    }
+                });
+                updatePromoteButtonUI();
+            }
+ 
+            createToggleGroup('buttonSizeToggle', buttonSize, (value) => {
+                buttonSize = value;
+                applyButtonSize();
+            });
+            
+            function openModal(e, defaultTab = 'config') {
+                if (e) e.preventDefault();
+                switchTab(defaultTab);
+ 
+                // プレイ中に開いた場合のみ「タイトルに戻る」を表示する
+                // (スタート画面から開いた場合はすでにタイトルなので不要)
+                document.getElementById('resetToTitleBtn').style.display = isGameStarted ? 'inline-flex' : 'none';
+                if (resetConfirmTimeout) clearTimeout(resetConfirmTimeout);
+                resetConfirmUI(false);
+ 
+                configModal.classList.remove('hidden');
+                configModal.classList.add('flex');
+                setTimeout(() => {
+                    configModal.classList.remove('opacity-0');
+                }, 10);
+                if (isGameStarted) {
+                    isPaused = true;
+                }
+            }
+ 
+            function closeModal(e) {
+                if (e) e.preventDefault();
+                if (resetConfirmTimeout) clearTimeout(resetConfirmTimeout);
+                resetConfirmUI(false);
+                configModal.classList.add('opacity-0');
+                setTimeout(() => {
+                    configModal.classList.remove('flex');
+                    configModal.classList.add('hidden');
+                    if (isGameStarted) {
+                        isPaused = false;
+                        lastTime = performance.now(); // タイマーのズレを補正
+                    }
+                }, 300);
+            }
+ 
+            document.getElementById('openConfigBtnStart').addEventListener('click', (e) => openModal(e, 'config'));
+            document.getElementById('settingsBtn').addEventListener('click', (e) => openModal(e, 'config'));
+            document.getElementById('closeConfigBtn').addEventListener('click', closeModal);
+            document.getElementById('closeConfigBtnBottom').addEventListener('click', closeModal);
+ 
+            const resetToTitleBtn = document.getElementById('resetToTitleBtn');
+            let resetConfirmPending = false;
+            let resetConfirmTimeout = null;
+ 
+            function resetConfirmUI(pending) {
+                resetConfirmPending = pending;
+                if (pending) {
+                    resetToTitleBtn.textContent = '⚠️ もう一度タップで戻る';
+                    resetToTitleBtn.classList.remove('bg-slate-700', 'hover:bg-slate-600', 'text-slate-300', 'border-slate-600');
+                    resetToTitleBtn.classList.add('bg-red-600', 'hover:bg-red-500', 'text-white', 'border-red-500');
+                } else {
+                    resetToTitleBtn.textContent = '🏠 タイトルに戻る';
+                    resetToTitleBtn.classList.remove('bg-red-600', 'hover:bg-red-500', 'text-white', 'border-red-500');
+                    resetToTitleBtn.classList.add('bg-slate-700', 'hover:bg-slate-600', 'text-slate-300', 'border-slate-600');
+                }
+            }
+ 
+            resetToTitleBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (!resetConfirmPending) {
+                    // 誤タップで即リセットされないよう、1回目のタップでは確認表示のみ行う
+                    // (公開ページのサンドボックス環境ではconfirm()等のネイティブダイアログが
+                    //  ブロックされ動作しないため、独自の2段階確認にしている)
+                    resetConfirmUI(true);
+                    resetConfirmTimeout = setTimeout(() => resetConfirmUI(false), 3000);
+                } else {
+                    clearTimeout(resetConfirmTimeout);
+                    location.reload();
+                }
+            });
+            
+            configModal.addEventListener('click', (e) => {
+                if (e.target === configModal) {
+                    closeModal();
+                }
+            });
+ 
+            document.getElementById('promoteBtn').addEventListener('click', function(e) {
+                e.preventDefault();
+                if (shippedCount < REQUIRE_SHIPPED_COUNT || currentRankIndex >= RANKS.length - 1 || isPromotionReserved) return;
+ 
+                isPromotionReserved = true;
+                updatePromoteButtonUI();
+            });
+ 
+            document.getElementById('compressBtn').addEventListener('click', function(e) {
+                e.preventDefault();
+                stageCrushCount++;
+                compressAndExpand();
+            });
+            
+            document.getElementById('sendBtn').addEventListener('click', function(e) {
+                e.preventDefault();
+                nextStage();
+            });
+ 
+            document.getElementById('restartBtn').addEventListener('click', function(e) {
+                e.preventDefault();
+                location.reload();
+            });
+ 
+            requestAnimationFrame(gameLoop);
+        });
+    </script>
+</body>
+</html>
+
