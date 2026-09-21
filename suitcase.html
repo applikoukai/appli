@@ -176,7 +176,14 @@
                             <button type="button" data-value="normal" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">通常</button>
                             <button type="button" data-value="compact" class="toggle-btn flex-1 py-2 px-4 rounded-lg font-bold transition-colors text-slate-400">コンパクト</button>
                         </div>
-                        <p class="text-xs text-slate-400 text-center max-w-xs">操作に慣れたら「コンパクト」にすると、ボタンの横幅を小さくできます。</p>
+                    <div class="flex flex-col gap-2 items-center border-t border-slate-700 pt-6 mt-2">
+                        <label class="text-sm font-bold text-blue-300">🚀 自動昇格:</label>
+                        <div id="autoPromoteToggle" class="toggle-group inline-flex bg-slate-900 rounded-xl border border-slate-600 p-1 w-full max-w-xs">
+                            <button type="button" data-value="off" class="toggle-btn flex-1 py-2 px-3 rounded-lg font-bold transition-colors text-slate-400 text-sm">OFF</button>
+                            <button type="button" data-value="on" class="toggle-btn flex-1 py-2 px-3 rounded-lg font-bold transition-colors text-slate-400 text-sm">ON</button>
+                            <button type="button" data-value="hidden" class="toggle-btn flex-1 py-2 px-3 rounded-lg font-bold transition-colors text-slate-400 text-sm">非表示</button>
+                        </div>
+                        <p class="text-xs text-slate-400 text-center max-w-xs">ONにすると、条件を満たした時点で昇格ボタンが自動的に押された状態になります。「非表示」はボタン自体をなくし、送るだけで自動的に昇格します。</p>
                     </div>
                 </div>
  
@@ -185,7 +192,7 @@
                 <div id="contentInstructions" class="p-6 overflow-y-auto text-slate-300 space-y-6 text-sm md:text-base hidden">
                     <section>
                         <h3 class="text-lg font-bold text-blue-400 mb-2 border-b border-blue-400/30 pb-1 flex items-center gap-2">🎯 目的</h3>
-                        <p class="leading-relaxed">制限時間内に、下部にある荷物をドラッグして、上部のスーツケースに詰め込みましょう！</p>
+                        <p class="leading-relaxed">制限時間内に、下部にある荷物をドラッグして、上部のスーツケースにできるだけ無駄なく詰め込みましょう！</p>
                     </section>
                     
                     <section>
@@ -198,7 +205,7 @@
  
                     <section>
                         <h3 class="text-lg font-bold text-amber-400 mb-2 border-b border-amber-400/30 pb-1 flex items-center gap-2">👇 押し込む</h3>
-                        <p class="leading-relaxed">上手く入れられない時は「押し込む」ボタンを使います。荷物を下に圧縮して無理やりスペースを作ります。</p>
+                        <p class="leading-relaxed">どうしても入りきらない時は「押し込む」ボタンを使います。荷物を下に圧縮して無理やりスペースを作ります。</p>
                     </section>
                     
                     <section>
@@ -345,6 +352,7 @@
         let timerBarY = 0;
         let timerPosition = 'left';
         let buttonSize = 'normal';
+        let autoPromote = 'off'; // 'off' | 'on' | 'hidden'
         const TIMER_BAR_WIDTH = 18;
         const TIMER_BAR_HEIGHT = 300;
         const TIMER_BAR_GAP = 16;
@@ -973,6 +981,22 @@
             if (!promoteBtn) return;
             const compact = buttonSize === 'compact';
  
+            // 自動昇格(ON/非表示): 条件を満たした時点で自動的に昇格を予約する
+            if (!isPromotionReserved && autoPromote !== 'off' &&
+                shippedCount >= REQUIRE_SHIPPED_COUNT && currentRankIndex < RANKS.length - 1) {
+                isPromotionReserved = true;
+            }
+ 
+            if (autoPromote === 'hidden') {
+                // ボタン自体を非表示にする(予約は上記で自動的に済んでいる)
+                promoteBtn.style.display = 'none';
+                return;
+            }
+            if (isGameStarted && !isGameOver) {
+                // 「非表示」から切り替えた際などにボタンを復元する
+                promoteBtn.style.display = 'flex';
+            }
+ 
             promoteBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'animate-bounce', 'bg-amber-500', 'bg-amber-300', 'text-amber-900', 'text-white', 'shadow-[0_0_20px_rgba(245,158,11,0.8)]');
  
             if (isPromotionReserved) {
@@ -1035,7 +1059,7 @@
                     // 最小値を 1 にすることで、時間が短くてもスコアが増倍されない（最大で /1 になる）ようにする
                     const timeDivisor = Math.max(1, effectiveTime * 0.5);
                     
-                    const base = 100 * cells;
+                    const base = 10 * cells;
                     const term1 = (base * 5) / stages;
                     const term2 = ((base * 5) / timeDivisor) / stages;
                     rankScore = Math.floor(term1 + term2);
@@ -1080,6 +1104,13 @@
         function nextStage() {
             if (isTransitioning || isGameOver) return;
  
+            // このステージの発送で「新たに」予約されたのか、既に(前ステージ以前から)
+            // 予約済みだったのかを区別する。自動昇格ONの場合、shippedCount++ 後の
+            // updatePromoteButtonUI()内で新規に予約されることがあるが、その場で
+            // 即座に消費してしまうと CONSUME(5) > REQUIRE(4) の差分がマイナスになる
+            // バグが起きるため、消費は「前ステージ終了時点で既に予約済みだった場合」に限る
+            const wasReservedBeforeThisShip = isPromotionReserved;
+ 
             shippedCount++;
             updatePromoteButtonUI();
  
@@ -1109,17 +1140,17 @@
             if (totalDissatisfaction >= 50) {
                 showGameOver();
             } else {
-                proceedToNextStage();
+                proceedToNextStage(wasReservedBeforeThisShip);
             }
         }
  
-        function proceedToNextStage() {
+        function proceedToNextStage(reservedBeforeThisShip) {
             if (draggedPiece) {
                 draggedPiece.isDragging = false;
                 draggedPiece = null;
             }
  
-            if (isPromotionReserved) {
+            if (isPromotionReserved && reservedBeforeThisShip) {
                 shippedCount -= CONSUME_SHIPPED_COUNT;
                 if (currentRankIndex < RANKS.length - 1) {
                     currentRankIndex++;
@@ -1685,6 +1716,11 @@
                 buttonSize = value;
                 applyButtonSize();
             });
+ 
+            createToggleGroup('autoPromoteToggle', autoPromote, (value) => {
+                autoPromote = value;
+                updatePromoteButtonUI();
+            });
             
             function openModal(e, defaultTab = 'config') {
                 if (e) e.preventDefault();
@@ -1792,4 +1828,3 @@
     </script>
 </body>
 </html>
-
